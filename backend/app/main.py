@@ -253,7 +253,10 @@ def preview_mesh(i):
 def export_stl(i):
  report=analyse(i)
  if report['printability']['overall']=='fail':raise HTTPException(409,'Export blocked: fix failed printability checks first')
- m=load_mesh(mesh_path(i));r=project_dir(i);name=(r/'name.txt').read_text(encoding='utf-8').strip() or 'Rebuild';safe=''.join(ch if ch.isalnum() or ch in '-_' else '-' for ch in name).strip('-_')[:60] or 'Rebuild';filename=f'CCSDESIGN-{safe}.stl';t=r/'exports'/filename;m.export(t);return FileResponse(t,media_type='model/stl',filename=filename)
+ m=load_mesh(mesh_path(i));r=project_dir(i);name=(r/'name.txt').read_text(encoding='utf-8').strip() or 'Rebuild';safe=''.join(ch if ch.isalnum() or ch in '-_' else '-' for ch in name).strip('-_')[:60] or 'Rebuild';filename=f'CCSDESIGN-{safe}.stl';exports=r/'exports';exports.mkdir(exist_ok=True)
+ for old in exports.glob('*.stl'):
+  old.unlink(missing_ok=True)
+ t=exports/filename;m.export(t);return FileResponse(t,media_type='model/stl',filename=filename)
 
 
 # Production UI: after `npm run build`, FastAPI serves the React application itself.
