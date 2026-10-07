@@ -9,12 +9,13 @@ from fastapi import FastAPI,File,HTTPException,UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from .repair import create_mirrored_repair
+from .repair import create_mirrored_repair,create_selected_mirrored_repair
 APP_ROOT=Path(__file__).resolve().parents[2];PROJECT_ROOT=APP_ROOT/'data'/'projects';ALLOWED_IMAGES={'.jpg','.jpeg','.png','.webp','.tif','.tiff'};ALLOWED_MESHES={'.obj','.ply','.stl','.glb','.gltf'};PROJECT_ROOT.mkdir(parents=True,exist_ok=True)
 app=FastAPI(title='CCSDESIGN Rebuild API',version='0.1.0');app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:5173','http://127.0.0.1:5173'],allow_credentials=True,allow_methods=['*'],allow_headers=['*'])
 class ProjectCreate(BaseModel):name:str
 class ScaleRequest(BaseModel):current_mm:float;target_mm:float
 class MissingPartRequest(BaseModel):axis:str='x';keep_side:str='positive';overlap_mm:float=0.4
+class SelectedRepairRequest(BaseModel):axis:str='x';point:list[float];radius_mm:float;overlap_mm:float=0.4
 class ProjectInfo(BaseModel):id:str;name:str;image_count:int;mesh_available:bool
 def project_dir(i:str)->Path:
  p=PROJECT_ROOT/i
@@ -114,8 +115,12 @@ def repair_mesh(i):
 def missing_part_preview(i,x:MissingPartRequest):
  try:patch,combined,plane=create_mirrored_repair(load_mesh(source_for_missing_repair(i)),x.axis,x.keep_side,x.overlap_mm)
  except ValueError as e:raise HTTPException(400,str(e))
- r=project_dir(i)/'meshes';patch.export(r/'missing-part-patch.stl');combined.export(r/'missing-part-preview.glb')
- return {'status':'preview','plane_mm':round(plane,3),'patch_faces':int(len(patch.faces)),'message':'Missing-part preview generated. Inspect it before applying.'}
+ r=project_dir(i)/'meshes';patch.export(r/'missing-part-patch.stl');combined.export(r/'missing-part-preview.glb');return {'status':'preview','plane_mm':round(plane,3),'patch_faces':int(len(patch.faces)),'message':'Missing-part preview generated. Inspect it before applying.'}
+@app.post('/api/projects/{i}/missing-part/selected-preview')
+def selected_missing_part_preview(i,x:SelectedRepairRequest):
+ try:patch,combined,plane,donor_faces=create_selected_mirrored_repair(load_mesh(source_for_missing_repair(i)),x.axis,x.point,x.radius_mm,x.overlap_mm)
+ except ValueError as e:raise HTTPException(400,str(e))
+ r=project_dir(i)/'meshes';patch.export(r/'missing-part-patch.stl');combined.export(r/'missing-part-preview.glb');return {'status':'preview','plane_mm':round(plane,3),'patch_faces':int(len(patch.faces)),'donor_faces':donor_faces,'message':'Selected damaged area rebuilt from matching geometry on the opposite side. Inspect the highlighted-area repair before applying.'}
 @app.get('/api/projects/{i}/missing-part/preview')
 def missing_part_preview_file(i):
  p=project_dir(i)/'meshes'/'missing-part-preview.glb'
@@ -125,8 +130,7 @@ def missing_part_preview_file(i):
 def missing_part_apply(i):
  r=project_dir(i)/'meshes';patch=r/'missing-part-patch.stl'
  if not patch.exists():raise HTTPException(404,'Generate and inspect a missing-part preview first')
- combined=trimesh.util.concatenate((load_mesh(source_for_missing_repair(i)),load_mesh(patch)));combined.merge_vertices();combined.remove_unreferenced_vertices();trimesh.repair.fix_normals(combined,multibody=True);trimesh.repair.fill_holes(combined);target=r/'missing-part-repair.stl';combined.export(target)
- return {'status':'applied','watertight':bool(combined.is_watertight),'components':len(combined.split(only_watertight=False)),'message':'Missing-part repair applied. Run printability analysis before export.'}
+ combined=trimesh.util.concatenate((load_mesh(source_for_missing_repair(i)),load_mesh(patch)));combined.merge_vertices();combined.remove_unreferenced_vertices();trimesh.repair.fix_normals(combined,multibody=True);trimesh.repair.fill_holes(combined);target=r/'missing-part-repair.stl';combined.export(target);return {'status':'applied','watertight':bool(combined.is_watertight),'components':len(combined.split(only_watertight=False)),'message':'Missing-part repair applied. Run printability analysis before export.'}
 @app.post('/api/projects/{i}/scale')
 def scale_mesh(i,x:ScaleRequest):
  if x.current_mm<=0 or x.target_mm<=0:raise HTTPException(400,'Measurements must be greater than zero')
