@@ -8,6 +8,7 @@ jobs:
     runs-on: windows-latest
     env:
       CCSDESIGN_NO_DIALOG: "1"
+      CCSDESIGN_NO_BROWSER: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
