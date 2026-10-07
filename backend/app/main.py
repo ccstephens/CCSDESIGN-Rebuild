@@ -195,6 +195,13 @@ def reconstruct(i):
  (r/'reconstruction').mkdir(exist_ok=True);write_job(i,status='queued',stage='Starting',progress=1,message='Preparing photographs for Meshroom.',started_at=datetime.now(timezone.utc).isoformat(),finished_at=None);threading.Thread(target=run_reconstruction,args=(i,mr),daemon=True).start();return {'status':'started','message':'Reconstruction started. Progress is now being tracked.'}
 @app.get('/api/projects/{i}/reconstruct/status')
 def reconstruction_status(i):return recover_job(i)
+@app.get('/api/projects/{i}/reconstruct/diagnostics')
+def reconstruction_diagnostics(i):
+ r=project_dir(i);job=recover_job(i);log=r/'reconstruction.log';tail=[]
+ if log.exists():
+  try:tail=log.read_text(encoding='utf-8',errors='replace').splitlines()[-40:]
+  except OSError:tail=[]
+ return {'status':job.get('status','idle'),'stage':job.get('stage','Waiting'),'message':job.get('message','Ready'),'meshroom_path':meshroom_path(),'photo_count':len(list((r/'images').glob('*'))),'log_tail':tail}
 @app.get('/api/projects/{i}/analysis')
 def analyse_mesh(i):return analyse(i)
 @app.post('/api/projects/{i}/repair')
