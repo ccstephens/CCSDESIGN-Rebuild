@@ -11,3 +11,5 @@
 .repair-warning{display:block;color:#ffc36b;background:#21180d;border:1px solid #6d4c22;border-radius:8px;padding:8px;line-height:1.35}
 
 .scale label{display:flex;flex-direction:column;gap:5px;font-size:11px;color:#9da8b5}.scale label input{width:100%}.scale span{align-self:end;padding-bottom:10px}.scale button{align-self:end}
+
+.diagnostics{margin-top:16px;padding:16px;border:1px solid #30343b;border-radius:12px;background:#15181d}.diagnostics-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.diagnostics-head h3{margin:3px 0 0}.diagnostics-meta{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0;font-size:12px}.diagnostics-meta span{padding:6px 9px;border-radius:7px;background:#20242b}.diagnostics pre{max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-word;padding:12px;border-radius:8px;background:#0b0d10;font-size:11px;line-height:1.45}
