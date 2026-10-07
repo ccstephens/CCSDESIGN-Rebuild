@@ -79,7 +79,9 @@ def source_for_missing_repair(i):
   if p.exists():return p
  raise HTTPException(404,'No source mesh is available for missing-part repair')
 def load_mesh(p):
- x=trimesh.load(p,force='mesh')
+ try:x=trimesh.load(p,force='mesh')
+ except HTTPException:raise
+ except Exception as e:raise HTTPException(422,f'Could not read mesh: {e}') from e
  if isinstance(x,trimesh.Scene):
   if not x.geometry:raise HTTPException(422,'Mesh contains no geometry')
   x=trimesh.util.concatenate(tuple(x.geometry.values()))
