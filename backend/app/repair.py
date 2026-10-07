@@ -5,6 +5,26 @@ import trimesh
 
 AXES = {"x": 0, "y": 1, "z": 2}
 
+def _edge_health(mesh: trimesh.Trimesh) -> tuple[int, int]:
+    counts = np.bincount(mesh.edges_unique_inverse)
+    return int(np.count_nonzero(counts == 1)), int(np.count_nonzero(counts > 2))
+
+def _auto_close(mesh: trimesh.Trimesh) -> tuple[trimesh.Trimesh, bool]:
+    """Try conservative Trimesh repairs and keep them only when edge health improves."""
+    before = _edge_health(mesh)
+    candidate = mesh.copy()
+    candidate.merge_vertices(merge_tex=True, merge_norm=True)
+    candidate.remove_unreferenced_vertices()
+    trimesh.repair.fix_normals(candidate, multibody=True)
+    # fill_holes only fills simple boundary loops; it is deliberately conservative here.
+    trimesh.repair.fill_holes(candidate)
+    candidate.merge_vertices(merge_tex=True, merge_norm=True)
+    candidate.remove_unreferenced_vertices()
+    after = _edge_health(candidate)
+    before_score = before[0] + before[1] * 2
+    after_score = after[0] + after[1] * 2
+    return (candidate, True) if after_score < before_score else (mesh, False)
+
 
 def _mirror_transform(axis_index: int, plane: float) -> np.ndarray:
     transform = np.eye(4)
@@ -37,7 +57,7 @@ def create_mirrored_repair(mesh: trimesh.Trimesh, axis: str, keep_side: str, ove
     return patch, combined, plane
 
 
-def create_selected_mirrored_repair(mesh: trimesh.Trimesh, axis: str, point: list[float], radius_mm: float, overlap_mm: float = 0.4) -> tuple[trimesh.Trimesh, trimesh.Trimesh, float, int, int, int, int]:
+def create_selected_mirrored_repair(mesh: trimesh.Trimesh, axis: str, point: list[float], radius_mm: float, overlap_mm: float = 0.4) -> tuple[trimesh.Trimesh, trimesh.Trimesh, float, int, int, int, int, bool]:
     """Replace a selected damaged region with mirrored geometry from the intact opposite side."""
     if axis not in AXES:
         raise ValueError("axis must be x, y or z")
@@ -87,9 +107,9 @@ def create_selected_mirrored_repair(mesh: trimesh.Trimesh, axis: str, point: lis
     combined.merge_vertices(merge_tex=True, merge_norm=True)
     combined.remove_unreferenced_vertices()
     trimesh.repair.fix_normals(combined, multibody=True)
-    # Report seam health immediately. Exact mirrored topology can weld perfectly; scanned or
-    # asymmetric geometry may still leave boundary/non-manifold edges and must be reviewed.
-    edge_counts = np.bincount(combined.edges_unique_inverse)
-    boundary_edges = int(np.count_nonzero(edge_counts == 1))
-    non_manifold_edges = int(np.count_nonzero(edge_counts > 2))
-    return patch, combined, plane, donor_count, removed_count, boundary_edges, non_manifold_edges
+    boundary_edges, non_manifold_edges = _edge_health(combined)
+    auto_closed = False
+    if boundary_edges or non_manifold_edges:
+        combined, auto_closed = _auto_close(combined)
+        boundary_edges, non_manifold_edges = _edge_health(combined)
+    return patch, combined, plane, donor_count, removed_count, boundary_edges, non_manifold_edges, auto_closed
