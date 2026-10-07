@@ -40,14 +40,22 @@ def project_dir(i:str)->Path:
  if not p.exists():raise HTTPException(404,'Project not found')
  return p
 def job_file(i):return project_dir(i)/'reconstruction-job.json'
-def pid_alive(pid):
+def pid_alive(pid,expected_started=None):
  if not isinstance(pid,int) or pid<=0:return False
- try:os.kill(pid,0);return True
- except OSError:return False
+ try:
+  import psutil
+  p=psutil.Process(pid)
+  if not p.is_running():return False
+  if expected_started:
+   started=datetime.fromtimestamp(p.create_time(),timezone.utc)
+   expected=datetime.fromisoformat(expected_started)
+   if abs((started-expected).total_seconds())>5:return False
+  return True
+ except Exception:return False
 def recover_job(i):
  d=write_job(i)
- if d.get('status') in {'queued','running'} and not pid_alive(d.get('pid')):
-  return write_job(i,status='failed',stage='Interrupted',progress=0,message='The previous reconstruction was interrupted when the app stopped. Start reconstruction again to retry.',finished_at=datetime.now(timezone.utc).isoformat(),pid=None)
+ if d.get('status') in {'queued','running'} and not pid_alive(d.get('pid'),d.get('process_started_at')):
+  return write_job(i,status='failed',stage='Interrupted',progress=0,message='The previous reconstruction was interrupted when the app stopped. Start reconstruction again to retry.',finished_at=datetime.now(timezone.utc).isoformat(),pid=None,process_started_at=None)
  return d
 def clear_derived(i,keep=()):
  r=project_dir(i);m=r/'meshes';e=r/'exports';names={'repaired.stl','scaled.stl','missing-part-patch.stl','missing-part-preview.glb','missing-part-repair.stl','missing-part-candidate.stl','preview.glb'}-set(keep)
@@ -96,7 +104,7 @@ def run_reconstruction(i,meshroom):
  root=project_dir(i);out=root/'reconstruction';log=root/'reconstruction.log';shutil.rmtree(out,ignore_errors=True);out.mkdir(parents=True,exist_ok=True);write_job(i,status='running',stage='Feature extraction',progress=5,message='Meshroom is matching features across your photos.')
  try:
   with log.open('w',encoding='utf-8',errors='replace') as f:
-   p=subprocess.Popen([meshroom,'--input',str(root/'images'),'--output',str(out)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,bufsize=1);write_job(i,pid=p.pid);assert p.stdout
+   p=subprocess.Popen([meshroom,'--input',str(root/'images'),'--output',str(out)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,bufsize=1);write_job(i,pid=p.pid,process_started_at=datetime.fromtimestamp(psutil.Process(p.pid).create_time(),timezone.utc).isoformat());assert p.stdout
    for line in p.stdout:
     f.write(line);low=line.lower();stages=[('featurematching','Photo matching',20,'Finding matching points between photographs.'),('structurefrommotion','Camera solve',35,'Calculating camera positions and object structure.'),('depthmap','Depth maps',55,'Building detailed depth information.'),('meshing','Meshing',75,'Turning the scan into 3D geometry.'),('meshfiltering','Mesh cleanup',88,'Cleaning reconstructed geometry.'),('texturing','Finalising',95,'Finalising the reconstructed model.')]
     for key,stage,progress,msg in stages:
@@ -192,7 +200,7 @@ def reconstruct(i):
  if recover_job(i).get('status') in {'queued','running'}:raise HTTPException(409,'A reconstruction is already running')
  mr=meshroom_path()
  if not mr:raise HTTPException(503,'Meshroom/AliceVision is not installed or not on PATH')
- shutil.rmtree(r/'reconstruction',ignore_errors=True);(r/'reconstruction').mkdir(exist_ok=True);(r/'reconstruction.log').unlink(missing_ok=True);write_job(i,status='queued',stage='Starting',progress=1,message='Preparing photographs for Meshroom.',started_at=datetime.now(timezone.utc).isoformat(),finished_at=None,pid=None);threading.Thread(target=run_reconstruction,args=(i,mr),daemon=True).start();return {'status':'started','message':'Reconstruction started. Progress is now being tracked.'}
+ shutil.rmtree(r/'reconstruction',ignore_errors=True);(r/'reconstruction').mkdir(exist_ok=True);(r/'reconstruction.log').unlink(missing_ok=True);write_job(i,status='queued',stage='Starting',progress=1,message='Preparing photographs for Meshroom.',started_at=datetime.now(timezone.utc).isoformat(),finished_at=None,pid=None,process_started_at=None);threading.Thread(target=run_reconstruction,args=(i,mr),daemon=True).start();return {'status':'started','message':'Reconstruction started. Progress is now being tracked.'}
 @app.get('/api/projects/{i}/reconstruct/status')
 def reconstruction_status(i):return recover_job(i)
 @app.get('/api/projects/{i}/reconstruct/diagnostics')
