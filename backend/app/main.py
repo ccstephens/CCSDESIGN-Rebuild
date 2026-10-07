@@ -106,7 +106,7 @@ def list_projects():
   if not r.is_dir():continue
   name=r/'name.txt'
   if not name.exists():continue
-  out.append(ProjectInfo(id=r.name,name=name.read_text(encoding='utf-8'),image_count=len(list((r/'images').glob('*'))),mesh_available=any((r/'meshes').glob('*'))))
+  out.append(ProjectInfo(id=r.name,name=name.read_text(encoding='utf-8'),image_count=len(list((r/'images').glob('*'))),mesh_available=any((r/'meshes'/n).exists() for n in ('missing-part-repair.stl','scaled.stl','repaired.stl','reconstruction.obj','reconstruction.ply','source.stl','source.obj','source.ply','source.glb','source.gltf'))))
  return sorted(out,key=lambda p:(PROJECT_ROOT/p.id).stat().st_mtime,reverse=True)
 @app.patch('/api/projects/{i}',response_model=ProjectInfo)
 def rename_project(i,x:ProjectRename):
