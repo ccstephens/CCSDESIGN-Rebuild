@@ -50,7 +50,7 @@ def load_mesh(p):
 def find_reconstructed_mesh(root):
  c=[]
  for pattern in ('**/texturedMesh.obj','**/mesh.obj','**/*.obj','**/*.ply'):c.extend(root.glob(pattern))
- return max(c,key=lambda p:p.stat().st_size) if c else None
+ c=list(set(c));return max(c,key=lambda p:p.stat().st_size) if c else None
 def run_reconstruction(i,meshroom):
  root=project_dir(i);out=root/'reconstruction';log=root/'reconstruction.log';write_job(i,status='running',stage='Feature extraction',progress=5,message='Meshroom is matching features across your photos.')
  try:
@@ -67,10 +67,10 @@ def run_reconstruction(i,meshroom):
   shutil.copy2(found,root/'meshes'/f'reconstruction{found.suffix.lower()}');write_job(i,status='complete',stage='Complete',progress=100,message='3D reconstruction complete. The model is ready to inspect and repair.',finished_at=datetime.now(timezone.utc).isoformat())
  except Exception as e:write_job(i,status='failed',stage='Failed',progress=0,message=f'Reconstruction error: {e}',finished_at=datetime.now(timezone.utc).isoformat())
 def analyse(i):
- m=load_mesh(mesh_path(i));ext=[round(float(v),3) for v in m.extents];components=len(m.split(only_watertight=False));areas=np.asarray(m.area_faces);degenerate=int(np.count_nonzero(areas<1e-10));checks=[]
+ m=load_mesh(mesh_path(i));ext=[round(float(v),3) for v in m.extents];components=len(m.split(only_watertight=False));areas=np.asarray(m.area_faces);degenerate=int(np.count_nonzero(areas<1e-10));edge_counts=np.bincount(m.edges_unique_inverse);boundary_edges=int(np.count_nonzero(edge_counts==1));non_manifold_edges=int(np.count_nonzero(edge_counts>2));checks=[]
  def add(name,state,message):checks.append({'name':name,'state':state,'message':message})
- add('Closed mesh','pass' if m.is_watertight else 'fail','Mesh is watertight.' if m.is_watertight else 'Open edges or holes detected; repair before printing.');add('Normals','pass' if m.is_winding_consistent else 'warning','Face directions are consistent.' if m.is_winding_consistent else 'Inconsistent face directions detected.');add('Separate parts','pass' if components==1 else 'warning',f'{components} connected component(s) detected.');add('Degenerate faces','pass' if degenerate==0 else 'warning',f'{degenerate} near-zero-area face(s) detected.');add('Physical size','pass' if min(ext)>0.1 else 'fail',f'Model bounds: {" × ".join(map(str,ext))} mm.');overall='fail' if any(c['state']=='fail' for c in checks) else ('warning' if any(c['state']=='warning' for c in checks) else 'pass')
- return {'vertices':int(len(m.vertices)),'faces':int(len(m.faces)),'watertight':bool(m.is_watertight),'winding_consistent':bool(m.is_winding_consistent),'volume':round(float(abs(m.volume)),3) if m.is_volume else None,'bounds_mm':ext,'components':components,'degenerate_faces':degenerate,'printability':{'overall':overall,'checks':checks}}
+ add('Closed mesh','pass' if boundary_edges==0 else 'fail','No boundary edges detected.' if boundary_edges==0 else f'{boundary_edges} boundary edge(s) detected; the model is open.');add('Manifold edges','pass' if non_manifold_edges==0 else 'fail','Every edge has a printable manifold connection.' if non_manifold_edges==0 else f'{non_manifold_edges} non-manifold edge(s) detected.');add('Normals','pass' if m.is_winding_consistent else 'warning','Face directions are consistent.' if m.is_winding_consistent else 'Inconsistent face directions detected.');add('Separate parts','pass' if components==1 else 'warning',f'{components} connected component(s) detected.');add('Degenerate faces','pass' if degenerate==0 else 'warning',f'{degenerate} near-zero-area face(s) detected.');add('Physical size','pass' if min(ext)>0.1 else 'fail',f'Model bounds: {" × ".join(map(str,ext))} mm.');overall='fail' if any(c['state']=='fail' for c in checks) else ('warning' if any(c['state']=='warning' for c in checks) else 'pass')
+ return {'vertices':int(len(m.vertices)),'faces':int(len(m.faces)),'watertight':bool(m.is_watertight),'winding_consistent':bool(m.is_winding_consistent),'volume':round(float(abs(m.volume)),3) if m.is_volume else None,'bounds_mm':ext,'components':components,'degenerate_faces':degenerate,'boundary_edges':boundary_edges,'non_manifold_edges':non_manifold_edges,'printability':{'overall':overall,'checks':checks}}
 @app.get('/api/health')
 def health():return {'status':'ok','version':'0.1.0'}
 @app.post('/api/projects',response_model=ProjectInfo)
@@ -81,14 +81,14 @@ def get_project(i):
  r=project_dir(i);return ProjectInfo(id=i,name=(r/'name.txt').read_text(),image_count=len(list((r/'images').glob('*'))),mesh_available=any((r/'meshes').glob('*')))
 @app.post('/api/projects/{i}/images')
 async def upload_images(i,files:Annotated[list[UploadFile],File()]):
- r=project_dir(i)/'images';a=0
- for f in files:
+ r=project_dir(i)/'images';supported=[f for f in files if Path(f.filename or'').suffix.lower() in ALLOWED_IMAGES]
+ if not supported:raise HTTPException(400,'No supported images were uploaded')
+ existing=len(list(r.glob('*')))
+ if existing+len(supported)>50:raise HTTPException(400,f'V1 accepts a maximum of 50 photos. This project already has {existing}.')
+ for f in supported:
   s=Path(f.filename or'').suffix.lower()
-  if s not in ALLOWED_IMAGES:continue
   with(r/f'{uuid.uuid4().hex}{s}').open('wb')as o:shutil.copyfileobj(f.file,o)
-  a+=1
- if not a:raise HTTPException(400,'No supported images were uploaded')
- return {'accepted':a,'total':len(list(r.glob('*')))}
+ return {'accepted':len(supported),'total':existing+len(supported)}
 @app.post('/api/projects/{i}/mesh')
 async def upload_mesh(i,file:Annotated[UploadFile,File()]):
  s=Path(file.filename or'').suffix.lower()
@@ -98,9 +98,9 @@ async def upload_mesh(i,file:Annotated[UploadFile,File()]):
  load_mesh(t);return {'status':'ready','mesh':t.name}
 @app.post('/api/projects/{i}/reconstruct')
 def reconstruct(i):
- r=project_dir(i)
- if len(list((r/'images').glob('*')))<20:raise HTTPException(400,'V1 reconstruction requires at least 20 photos')
- if write_job(i).get('status')=='running':raise HTTPException(409,'A reconstruction is already running')
+ r=project_dir(i);count=len(list((r/'images').glob('*')))
+ if count<20 or count>50:raise HTTPException(400,f'V1 reconstruction requires 20–50 photos; this project has {count}.')
+ if write_job(i).get('status') in {'queued','running'}:raise HTTPException(409,'A reconstruction is already running')
  mr=shutil.which('meshroom_batch')
  if not mr:raise HTTPException(503,'Meshroom/AliceVision is not installed or not on PATH')
  (r/'reconstruction').mkdir(exist_ok=True);write_job(i,status='queued',stage='Starting',progress=1,message='Preparing photographs for Meshroom.',started_at=datetime.now(timezone.utc).isoformat(),finished_at=None);threading.Thread(target=run_reconstruction,args=(i,mr),daemon=True).start();return {'status':'started','message':'Reconstruction started. Progress is now being tracked.'}
