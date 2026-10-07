@@ -25,6 +25,7 @@ jobs:
       - name: Build Windows executable
         shell: pwsh
         run: |
+          $env:CCSDESIGN_BUILD=$env:GITHUB_SHA
           pyinstaller --noconfirm --clean --name "CCSDESIGN-Rebuild" --collect-all trimesh --collect-all networkx --add-data "frontend/dist;frontend/dist" launcher.py
       - name: Add launch helper
         shell: pwsh
@@ -88,9 +89,6 @@ jobs:
           } finally {
             if (-not $server.HasExited) { Stop-Process -Id $server.Id -Force }
           }
-      - name: Create portable ZIP
-        shell: pwsh
-        run: Compress-Archive -Path "dist/CCSDESIGN-Rebuild/*" -DestinationPath "dist/CCSDESIGN-Rebuild-Windows-V1.zip" -Force
       - name: Write build information
         shell: pwsh
         run: |
@@ -102,6 +100,9 @@ jobs:
           Projects: %LOCALAPPDATA%\CCSDESIGN Rebuild\projects
           Photo reconstruction requires Meshroom/AliceVision.
           "@ | Set-Content "dist/CCSDESIGN-Rebuild/BUILD-INFO.txt"
+      - name: Create portable ZIP
+        shell: pwsh
+        run: Compress-Archive -Path "dist/CCSDESIGN-Rebuild/*" -DestinationPath "dist/CCSDESIGN-Rebuild-Windows-V1.zip" -Force
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
