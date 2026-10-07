@@ -167,13 +167,16 @@ def clear_images(i):
  return {'status':'cleared','removed':count}
 @app.post('/api/projects/{i}/images')
 async def upload_images(i,files:Annotated[list[UploadFile],File()]):
- r=project_dir(i)/'images';supported=[f for f in files if Path(f.filename or'').suffix.lower() in ALLOWED_IMAGES]
+ root=project_dir(i);job=recover_job(i)
+ if job.get('status') in {'queued','running'}:raise HTTPException(409,'Cannot change photos while reconstruction is running')
+ r=root/'images';supported=[f for f in files if Path(f.filename or'').suffix.lower() in ALLOWED_IMAGES]
  if not supported:raise HTTPException(400,'No supported images were uploaded')
  existing=len(list(r.glob('*')))
  if existing+len(supported)>50:raise HTTPException(400,f'V1 accepts a maximum of 50 photos. This project already has {existing}.')
  for f in supported:
   s=Path(f.filename or'').suffix.lower()
   with(r/f'{uuid.uuid4().hex}{s}').open('wb')as o:shutil.copyfileobj(f.file,o)
+ write_job(i,status='idle',stage='Waiting',progress=0,message='Photo set changed. Ready to build a new 3D scan when 20–50 photos are loaded.',started_at=None,finished_at=None,pid=None,process_started_at=None)
  return {'accepted':len(supported),'total':existing+len(supported)}
 @app.post('/api/projects/{i}/mesh')
 async def upload_mesh(i,file:Annotated[UploadFile,File()]):
