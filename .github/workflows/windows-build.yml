@@ -40,11 +40,11 @@ jobs:
         shell: pwsh
         run: |
           $exe = Resolve-Path "dist/CCSDESIGN-Rebuild/CCSDESIGN-Rebuild.exe"
-          $launchJob = Start-Job -ScriptBlock { param($path) & $path } -ArgumentList $exe
+          $p = Start-Process -FilePath $exe -PassThru
           try {
             $ready = $false
             for ($i=0; $i -lt 40; $i++) {
-              if ($launchJob.State -eq "Completed" -or $launchJob.State -eq "Failed") { Write-Host "Packaged launch job ended early with state $($launchJob.State)."; Receive-Job $launchJob -ErrorAction SilentlyContinue; break }
+              if ($p.HasExited) { Write-Host "Packaged process exited early with code $($p.ExitCode)."; break }
               try {
                 $health = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/health" -TimeoutSec 1
                 if ($health.status -eq "ok") { if ($health.build -ne $env:GITHUB_SHA) { throw "Packaged build identifier mismatch: $($health.build)" }; $ready = $true; break }
@@ -74,8 +74,6 @@ jobs:
             Write-Host "Packaged application API, frontend, geometry, scale and export checks passed."
           } finally {
             Get-Process "CCSDESIGN-Rebuild" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-            Stop-Job $launchJob -ErrorAction SilentlyContinue
-            Remove-Job $launchJob -Force -ErrorAction SilentlyContinue
           }
       - name: Verify second launch reuses running app
         shell: pwsh
