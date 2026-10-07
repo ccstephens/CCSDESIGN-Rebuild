@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json,shutil,subprocess,threading,uuid,os
+import json,shutil,subprocess,threading,uuid,os,sys
 from datetime import datetime,timezone
 from pathlib import Path
 from typing import Annotated
@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from .repair import create_mirrored_repair,create_selected_mirrored_repair
-APP_ROOT=Path(__file__).resolve().parents[2];PROJECT_ROOT=APP_ROOT/'data'/'projects';ALLOWED_IMAGES={'.jpg','.jpeg','.png','.webp','.tif','.tiff'};ALLOWED_MESHES={'.obj','.ply','.stl','.glb','.gltf'};PROJECT_ROOT.mkdir(parents=True,exist_ok=True)
+SOURCE_ROOT=Path(__file__).resolve().parents[2];BUNDLE_ROOT=Path(getattr(sys,'_MEIPASS',SOURCE_ROOT));DATA_ROOT=(Path(os.environ.get('LOCALAPPDATA',Path.home()))/'CCSDESIGN Rebuild') if getattr(sys,'frozen',False) else SOURCE_ROOT/'data';PROJECT_ROOT=DATA_ROOT/'projects';ALLOWED_IMAGES={'.jpg','.jpeg','.png','.webp','.tif','.tiff'};ALLOWED_MESHES={'.obj','.ply','.stl','.glb','.gltf'};PROJECT_ROOT.mkdir(parents=True,exist_ok=True)
 app=FastAPI(title='CCSDESIGN Rebuild API',version='0.1.0');app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:5173','http://127.0.0.1:5173'],allow_credentials=True,allow_methods=['*'],allow_headers=['*'])
 class ProjectCreate(BaseModel):name:str
 class ProjectRename(BaseModel):name:str
@@ -219,6 +219,6 @@ def export_stl(i):
 
 
 # Production UI: after `npm run build`, FastAPI serves the React application itself.
-FRONTEND_DIST=APP_ROOT/'frontend'/'dist'
+FRONTEND_DIST=BUNDLE_ROOT/'frontend'/'dist'
 if FRONTEND_DIST.exists():
  app.mount('/',StaticFiles(directory=FRONTEND_DIST,html=True),name='frontend')
