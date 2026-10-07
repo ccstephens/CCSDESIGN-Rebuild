@@ -117,7 +117,7 @@ def rename_project(i,x:ProjectRename):
  return get_project(i)
 @app.delete('/api/projects/{i}')
 def delete_project(i):
- r=project_dir(i);job=write_job(i)
+ r=project_dir(i);job=recover_job(i)
  if job.get('status') in {'queued','running'}:raise HTTPException(409,'Cannot delete a project while reconstruction is running')
  shutil.rmtree(r)
  return {'status':'deleted','id':i}
