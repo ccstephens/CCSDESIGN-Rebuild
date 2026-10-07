@@ -18,7 +18,7 @@ class ProjectRename(BaseModel):name:str
 class ScaleRequest(BaseModel):current_mm:float;target_mm:float
 class MissingPartRequest(BaseModel):axis:str='x';keep_side:str='positive';overlap_mm:float=0.4
 class SelectedRepairRequest(BaseModel):axis:str='x';point:list[float];radius_mm:float;overlap_mm:float=0.4
-class ProjectInfo(BaseModel):id:str;name:str;image_count:int;mesh_available:bool
+class ProjectInfo(BaseModel):id:str;name:str;image_count:int;mesh_available:bool;reconstruction:dict|None=None
 MESH_NAMES=('missing-part-repair.stl','scaled.stl','repaired.stl','reconstruction.obj','reconstruction.ply','source.stl','source.obj','source.ply','source.glb','source.gltf')
 def meshroom_path():
  configured=os.environ.get('MESHROOM_BATCH','').strip()
@@ -151,7 +151,7 @@ def delete_project(i):
  return {'status':'deleted','id':i}
 @app.get('/api/projects/{i}',response_model=ProjectInfo)
 def get_project(i):
- r=project_dir(i);return ProjectInfo(id=i,name=(r/'name.txt').read_text(),image_count=len(list((r/'images').glob('*'))),mesh_available=any((r/'meshes'/n).exists() for n in MESH_NAMES))
+ r=project_dir(i);return ProjectInfo(id=i,name=(r/'name.txt').read_text(),image_count=len(list((r/'images').glob('*'))),mesh_available=any((r/'meshes'/n).exists() for n in MESH_NAMES),reconstruction=recover_job(i))
 @app.delete('/api/projects/{i}/images')
 def clear_images(i):
  r=project_dir(i);job=recover_job(i)
