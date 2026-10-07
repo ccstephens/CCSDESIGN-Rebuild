@@ -123,7 +123,7 @@ def analyse(i):
 @app.get('/api/health')
 def health():
  mr=meshroom_path()
- return {'status':'ok','version':'0.1.0','meshroom_available':bool(mr),'meshroom_path':mr}
+ return {'status':'ok','version':'0.1.0','build':os.environ.get('CCSDESIGN_BUILD','development'),'meshroom_available':bool(mr),'meshroom_path':mr}
 @app.post('/api/projects',response_model=ProjectInfo)
 def create_project(x:ProjectCreate):
  i=uuid.uuid4().hex[:12];r=PROJECT_ROOT/i;(r/'images').mkdir(parents=True);(r/'meshes').mkdir();(r/'exports').mkdir();n=x.name.strip()or'Untitled project';(r/'name.txt').write_text(n,encoding='utf-8');write_job(i);return ProjectInfo(id=i,name=n,image_count=0,mesh_available=False)
