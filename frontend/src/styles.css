@@ -5,3 +5,5 @@
 .dependency-warning{display:block;color:#e9c85d;background:#19170d;border:1px solid #5d542a;border-radius:9px;padding:9px;line-height:1.35}
 
 .danger{background:#241217;border-color:#5e3038;color:#ff9aa3}.danger:hover{border-color:#ff7e87}
+
+.project-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.project-actions button{margin:0}
