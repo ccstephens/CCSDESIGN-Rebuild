@@ -55,7 +55,7 @@ def main():
         if sock.connect_ex((HOST,PORT))==0:
             fatal("Port 8000 is already in use by another application. Close that application, then start CCSDESIGN Rebuild again.")
     threading.Thread(target=wait_and_open,daemon=True).start()
-    uvicorn.run(app,host=HOST,port=PORT,log_level="info")
+    uvicorn.run(app,host=HOST,port=PORT,log_level="info",log_config=None if getattr(sys,"frozen",False) else uvicorn.config.LOGGING_CONFIG)
 
 if __name__=="__main__":
     try:
