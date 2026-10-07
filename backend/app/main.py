@@ -111,6 +111,19 @@ def delete_project(i):
 @app.get('/api/projects/{i}',response_model=ProjectInfo)
 def get_project(i):
  r=project_dir(i);return ProjectInfo(id=i,name=(r/'name.txt').read_text(),image_count=len(list((r/'images').glob('*'))),mesh_available=any((r/'meshes').glob('*')))
+@app.delete('/api/projects/{i}/images')
+def clear_images(i):
+ r=project_dir(i);job=recover_job(i)
+ if job.get('status') in {'queued','running'}:raise HTTPException(409,'Cannot change photos while reconstruction is running')
+ images=r/'images';count=0
+ for p in images.iterdir():
+  if p.is_file():p.unlink();count+=1
+ reconstruction=r/'reconstruction'
+ if reconstruction.exists():shutil.rmtree(reconstruction)
+ for p in (r/'meshes'/'reconstruction.obj',r/'meshes'/'reconstruction.ply'):
+  p.unlink(missing_ok=True)
+ write_job(i,status='idle',stage='Waiting',progress=0,message='Photos cleared. Add a new 20–50 photo set.',started_at=None,finished_at=None,pid=None)
+ return {'status':'cleared','removed':count}
 @app.post('/api/projects/{i}/images')
 async def upload_images(i,files:Annotated[list[UploadFile],File()]):
  r=project_dir(i)/'images';supported=[f for f in files if Path(f.filename or'').suffix.lower() in ALLOWED_IMAGES]
