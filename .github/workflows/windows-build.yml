@@ -55,6 +55,23 @@ jobs:
           } finally {
             if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
           }
+      - name: Verify second launch reuses running app
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path "dist/CCSDESIGN-Rebuild/CCSDESIGN-Rebuild.exe"
+          $server = Start-Process -FilePath $exe -PassThru
+          try {
+            $ready = $false
+            for ($i=0; $i -lt 60; $i++) {
+              try { if ((Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/health" -TimeoutSec 1).status -eq "ok") { $ready=$true; break } } catch {}
+              Start-Sleep -Milliseconds 500
+            }
+            if (-not $ready) { throw "Primary packaged instance did not start." }
+            $second = Start-Process -FilePath $exe -PassThru -Wait
+            if ($second.ExitCode -ne 0) { throw "Second launch should reuse the running app and exit cleanly." }
+          } finally {
+            if (-not $server.HasExited) { Stop-Process -Id $server.Id -Force }
+          }
       - name: Create portable ZIP
         shell: pwsh
         run: Compress-Archive -Path "dist/CCSDESIGN-Rebuild/*" -DestinationPath "dist/CCSDESIGN-Rebuild-Windows-V1.zip" -Force
