@@ -186,7 +186,7 @@ def clear_images(i):
  if reconstruction.exists():shutil.rmtree(reconstruction)
  for p in (r/'meshes'/'reconstruction.obj',r/'meshes'/'reconstruction.ply'):
   p.unlink(missing_ok=True)
- write_job(i,status='idle',stage='Waiting',progress=0,message='Photos cleared. Add at least 8 photos; 12–30 is recommended.',started_at=None,finished_at=None,pid=None)
+ write_job(i,status='idle',stage='Waiting',progress=0,message='Photos cleared. Add at least 1 photo. Multiple viewpoints are recommended for complete 3D reconstruction.',started_at=None,finished_at=None,pid=None)
  return {'status':'cleared','removed':count}
 @app.post('/api/projects/{i}/images')
 async def upload_images(i,files:Annotated[list[UploadFile],File()]):
@@ -199,7 +199,7 @@ async def upload_images(i,files:Annotated[list[UploadFile],File()]):
  for f in supported:
   s=Path(f.filename or'').suffix.lower()
   with(r/f'{uuid.uuid4().hex}{s}').open('wb')as o:shutil.copyfileobj(f.file,o)
- write_job(i,status='idle',stage='Waiting',progress=0,message='Photo set changed. Ready to build a new 3D scan with 8 or more photos; 12–30 is recommended.',started_at=None,finished_at=None,pid=None,process_started_at=None)
+ write_job(i,status='idle',stage='Waiting',progress=0,message='Photo set changed. Ready to attempt a 3D scan. Multiple viewpoints improve reconstruction quality.',started_at=None,finished_at=None,pid=None,process_started_at=None)
  return {'accepted':len(supported),'total':existing+len(supported)}
 @app.post('/api/projects/{i}/mesh')
 async def upload_mesh(i,file:Annotated[UploadFile,File()]):
@@ -222,7 +222,7 @@ async def upload_mesh(i,file:Annotated[UploadFile,File()]):
 @app.post('/api/projects/{i}/reconstruct')
 def reconstruct(i):
  r=project_dir(i);count=len(list((r/'images').glob('*')))
- if count<8 or count>50:raise HTTPException(400,f'V1 reconstruction requires at least 8 photos and accepts up to 50; 12–30 is recommended. This project has {count}.')
+ if count<1 or count>50:raise HTTPException(400,f'V1 reconstruction requires at least 1 photo and accepts up to 50. Multiple viewpoints are recommended for complete 3D geometry. This project has {count}.')
  if recover_job(i).get('status') in {'queued','running'}:raise HTTPException(409,'A reconstruction is already running')
  mr=meshroom_path()
  if not mr:raise HTTPException(503,'Meshroom/AliceVision is not installed or not on PATH')
