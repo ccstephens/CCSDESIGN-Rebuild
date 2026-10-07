@@ -48,7 +48,7 @@ jobs:
               } catch {}
               Start-Sleep -Milliseconds 500
             }
-            if (-not $ready) { $log = Join-Path $HOME "CCSDESIGN Rebuild/startup-error.log"; if (Test-Path $log) { Write-Host "=== startup-error.log ==="; Get-Content $log }; throw "Packaged CCSDESIGN Rebuild did not become healthy." }
+            if (-not $ready) { $log = Join-Path $env:LOCALAPPDATA "CCSDESIGN Rebuild/startup-error.log"; if (Test-Path $log) { Write-Host "=== startup-error.log ==="; Get-Content $log }; throw "Packaged CCSDESIGN Rebuild did not become healthy." }
             $projects = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/projects" -TimeoutSec 2
             $ui = Invoke-WebRequest -Uri "http://127.0.0.1:8000/" -UseBasicParsing -TimeoutSec 2
             if ($ui.StatusCode -ne 200 -or $ui.Content -notmatch 'CCSDESIGN') { throw "Packaged frontend was not served correctly." }
