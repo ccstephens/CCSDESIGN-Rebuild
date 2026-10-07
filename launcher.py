@@ -27,7 +27,7 @@ def log_error(message):
 
 def fatal(message):
     log_error(message)
-    if sys.platform=="win32":
+    if sys.platform=="win32" and os.environ.get("CCSDESIGN_NO_DIALOG")!="1":
         try: ctypes.windll.user32.MessageBoxW(None,message,"CCSDESIGN Rebuild",0x10)
         except Exception: pass
     raise SystemExit(message)
@@ -65,7 +65,7 @@ if __name__=="__main__":
     except Exception:
         details=traceback.format_exc()
         log_error(details)
-        if sys.platform=="win32":
+        if sys.platform=="win32" and os.environ.get("CCSDESIGN_NO_DIALOG")!="1":
             try: ctypes.windll.user32.MessageBoxW(None,f"CCSDESIGN Rebuild could not start.\n\nDetails were written to:\n{LOG_FILE}","CCSDESIGN Rebuild",0x10)
             except Exception: pass
         raise
