@@ -140,9 +140,9 @@ def get_settings():
  saved=(read_settings().get('meshroom_path') or '').strip();return {'meshroom_path':saved,'meshroom_available':bool(meshroom_path())}
 @app.put('/api/settings')
 def update_settings(x:SettingsUpdate):
- path=(x.meshroom_path or '').strip();d=read_settings()
+ path=(x.meshroom_path or '').strip().strip('"').strip("'");d=read_settings()
  if path:
-  p=Path(path).expanduser()
+  p=Path(os.path.expandvars(path)).expanduser()
   if not p.is_file():raise HTTPException(400,'Meshroom executable was not found at that path')
   d['meshroom_path']=str(p)
  else:d.pop('meshroom_path',None)
