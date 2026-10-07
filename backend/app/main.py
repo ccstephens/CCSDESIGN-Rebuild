@@ -21,6 +21,10 @@ class SelectedRepairRequest(BaseModel):axis:str='x';point:list[float];radius_mm:
 class ProjectInfo(BaseModel):id:str;name:str;image_count:int;mesh_available:bool
 MESH_NAMES=('missing-part-repair.stl','scaled.stl','repaired.stl','reconstruction.obj','reconstruction.ply','source.stl','source.obj','source.ply','source.glb','source.gltf')
 def meshroom_path():
+ configured=os.environ.get('MESHROOM_BATCH','').strip()
+ if configured:
+  p=Path(configured).expanduser()
+  if p.is_file():return str(p)
  p=shutil.which('meshroom_batch')
  if p:return p
  if os.name=='nt':
@@ -107,7 +111,9 @@ def analyse(i):
  add('Closed mesh','pass' if boundary_edges==0 else 'fail','No boundary edges detected.' if boundary_edges==0 else f'{boundary_edges} boundary edge(s) detected; the model is open.');add('Manifold edges','pass' if non_manifold_edges==0 else 'fail','Every edge has a printable manifold connection.' if non_manifold_edges==0 else f'{non_manifold_edges} non-manifold edge(s) detected.');add('Normals','pass' if m.is_winding_consistent else 'warning','Face directions are consistent.' if m.is_winding_consistent else 'Inconsistent face directions detected.');add('Separate parts','pass' if components==1 else 'warning',f'{components} connected component(s) detected.');add('Degenerate faces','pass' if degenerate==0 else 'warning',f'{degenerate} near-zero-area face(s) detected.');add('Physical size','pass' if min(ext)>0.1 else 'fail',f'Model bounds: {" × ".join(map(str,ext))} mm.');overall='fail' if any(c['state']=='fail' for c in checks) else ('warning' if any(c['state']=='warning' for c in checks) else 'pass')
  return {'vertices':int(len(m.vertices)),'faces':int(len(m.faces)),'watertight':bool(m.is_watertight),'winding_consistent':bool(m.is_winding_consistent),'volume':round(float(abs(m.volume)),3) if m.is_volume else None,'bounds_mm':ext,'components':components,'degenerate_faces':degenerate,'boundary_edges':boundary_edges,'non_manifold_edges':non_manifold_edges,'printability':{'overall':overall,'checks':checks}}
 @app.get('/api/health')
-def health():return {'status':'ok','version':'0.1.0','meshroom_available':bool(meshroom_path())}
+def health():
+ mr=meshroom_path()
+ return {'status':'ok','version':'0.1.0','meshroom_available':bool(mr),'meshroom_path':mr}
 @app.post('/api/projects',response_model=ProjectInfo)
 def create_project(x:ProjectCreate):
  i=uuid.uuid4().hex[:12];r=PROJECT_ROOT/i;(r/'images').mkdir(parents=True);(r/'meshes').mkdir();(r/'exports').mkdir();n=x.name.strip()or'Untitled project';(r/'name.txt').write_text(n,encoding='utf-8');write_job(i);return ProjectInfo(id=i,name=n,image_count=0,mesh_available=False)
