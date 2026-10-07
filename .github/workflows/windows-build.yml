@@ -32,6 +32,27 @@ jobs:
           '@echo off
           cd /d "%~dp0"
           start "" "CCSDESIGN-Rebuild.exe"' | Set-Content -Encoding ascii "dist/CCSDESIGN-Rebuild/Start CCSDESIGN Rebuild.bat"
+      - name: Smoke-test packaged executable
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path "dist/CCSDESIGN-Rebuild/CCSDESIGN-Rebuild.exe"
+          $p = Start-Process -FilePath $exe -PassThru
+          try {
+            $ready = $false
+            for ($i=0; $i -lt 60; $i++) {
+              if ($p.HasExited) { break }
+              try {
+                $health = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/health" -TimeoutSec 1
+                if ($health.status -eq "ok") { $ready = $true; break }
+              } catch {}
+              Start-Sleep -Milliseconds 500
+            }
+            if (-not $ready) { throw "Packaged CCSDESIGN Rebuild did not become healthy." }
+            $projects = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/projects" -TimeoutSec 2
+            Write-Host "Packaged application health check passed."
+          } finally {
+            if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+          }
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
