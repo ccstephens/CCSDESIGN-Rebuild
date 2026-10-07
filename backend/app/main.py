@@ -22,6 +22,13 @@ def project_dir(i:str)->Path:
  if not p.exists():raise HTTPException(404,'Project not found')
  return p
 def job_file(i):return project_dir(i)/'reconstruction-job.json'
+def clear_derived(i,keep=()):
+ r=project_dir(i);m=r/'meshes';e=r/'exports';names={'repaired.stl','scaled.stl','missing-part-patch.stl','missing-part-preview.glb','missing-part-repair.stl','preview.glb'}-set(keep)
+ for n in names:
+  p=m/n
+  if p.exists():p.unlink()
+ for p in e.glob('*'):
+  if p.is_file():p.unlink()
 def write_job(i,**v):
  p=job_file(i);d={'status':'idle','stage':'Waiting','progress':0,'message':'Ready','started_at':None,'finished_at':None}
  if p.exists():
@@ -64,7 +71,7 @@ def run_reconstruction(i,meshroom):
   if code!=0:write_job(i,status='failed',stage='Failed',progress=0,message=f'Meshroom stopped with exit code {code}. See reconstruction.log.',finished_at=datetime.now(timezone.utc).isoformat());return
   found=find_reconstructed_mesh(out)
   if not found:write_job(i,status='failed',stage='No mesh produced',progress=0,message='Meshroom finished but no OBJ/PLY mesh was found.',finished_at=datetime.now(timezone.utc).isoformat());return
-  shutil.copy2(found,root/'meshes'/f'reconstruction{found.suffix.lower()}');write_job(i,status='complete',stage='Complete',progress=100,message='3D reconstruction complete. The model is ready to inspect and repair.',finished_at=datetime.now(timezone.utc).isoformat())
+  clear_derived(i);shutil.copy2(found,root/'meshes'/f'reconstruction{found.suffix.lower()}');write_job(i,status='complete',stage='Complete',progress=100,message='3D reconstruction complete. The model is ready to inspect and repair.',finished_at=datetime.now(timezone.utc).isoformat())
  except Exception as e:write_job(i,status='failed',stage='Failed',progress=0,message=f'Reconstruction error: {e}',finished_at=datetime.now(timezone.utc).isoformat())
 def analyse(i):
  m=load_mesh(mesh_path(i));ext=[round(float(v),3) for v in m.extents];components=len(m.split(only_watertight=False));areas=np.asarray(m.area_faces);degenerate=int(np.count_nonzero(areas<1e-10));edge_counts=np.bincount(m.edges_unique_inverse);boundary_edges=int(np.count_nonzero(edge_counts==1));non_manifold_edges=int(np.count_nonzero(edge_counts>2));checks=[]
@@ -93,7 +100,12 @@ async def upload_images(i,files:Annotated[list[UploadFile],File()]):
 async def upload_mesh(i,file:Annotated[UploadFile,File()]):
  s=Path(file.filename or'').suffix.lower()
  if s not in ALLOWED_MESHES:raise HTTPException(400,'Unsupported mesh format')
- t=project_dir(i)/'meshes'/f'source{s}'
+ clear_derived(i);m=project_dir(i)/'meshes'
+ for old in m.glob('source.*'):
+  if old.is_file():old.unlink()
+ for old in (m/'reconstruction.obj',m/'reconstruction.ply'):
+  if old.exists():old.unlink()
+ t=m/f'source{s}'
  with t.open('wb')as o:shutil.copyfileobj(file.file,o)
  load_mesh(t);return {'status':'ready','mesh':t.name}
 @app.post('/api/projects/{i}/reconstruct')
@@ -110,7 +122,7 @@ def reconstruction_status(i):return write_job(i)
 def analyse_mesh(i):return analyse(i)
 @app.post('/api/projects/{i}/repair')
 def repair_mesh(i):
- m=load_mesh(mesh_path(i));m.remove_unreferenced_vertices();m.remove_infinite_values();m.merge_vertices();trimesh.repair.fix_normals(m,multibody=True);trimesh.repair.fill_holes(m);m.export(project_dir(i)/'meshes'/'repaired.stl');return {'status':'repaired','watertight':bool(m.is_watertight)}
+ m=load_mesh(mesh_path(i));m.remove_unreferenced_vertices();m.remove_infinite_values();m.merge_vertices();trimesh.repair.fix_normals(m,multibody=True);trimesh.repair.fill_holes(m);clear_derived(i);m.export(project_dir(i)/'meshes'/'repaired.stl');return {'status':'repaired','watertight':bool(m.is_watertight)}
 @app.post('/api/projects/{i}/missing-part/preview')
 def missing_part_preview(i,x:MissingPartRequest):
  try:patch,combined,plane=create_mirrored_repair(load_mesh(source_for_missing_repair(i)),x.axis,x.keep_side,x.overlap_mm)
@@ -130,11 +142,11 @@ def missing_part_preview_file(i):
 def missing_part_apply(i):
  r=project_dir(i)/'meshes';patch=r/'missing-part-patch.stl'
  if not patch.exists():raise HTTPException(404,'Generate and inspect a missing-part preview first')
- combined=trimesh.util.concatenate((load_mesh(source_for_missing_repair(i)),load_mesh(patch)));combined.merge_vertices();combined.remove_unreferenced_vertices();trimesh.repair.fix_normals(combined,multibody=True);trimesh.repair.fill_holes(combined);target=r/'missing-part-repair.stl';combined.export(target);return {'status':'applied','watertight':bool(combined.is_watertight),'components':len(combined.split(only_watertight=False)),'message':'Missing-part repair applied. Run printability analysis before export.'}
+ combined=trimesh.util.concatenate((load_mesh(source_for_missing_repair(i)),load_mesh(patch)));combined.merge_vertices();combined.remove_unreferenced_vertices();trimesh.repair.fix_normals(combined,multibody=True);trimesh.repair.fill_holes(combined);target=r/'missing-part-repair.stl';combined.export(target);clear_derived(i,keep={'missing-part-repair.stl'});return {'status':'applied','watertight':bool(combined.is_watertight),'components':len(combined.split(only_watertight=False)),'message':'Missing-part repair applied. Run printability analysis before export.'}
 @app.post('/api/projects/{i}/scale')
 def scale_mesh(i,x:ScaleRequest):
  if x.current_mm<=0 or x.target_mm<=0:raise HTTPException(400,'Measurements must be greater than zero')
- f=x.target_mm/x.current_mm;m=load_mesh(mesh_path(i));m.apply_scale(f);m.export(project_dir(i)/'meshes'/'scaled.stl');return {'scale_factor':f}
+ f=x.target_mm/x.current_mm;m=load_mesh(mesh_path(i));m.apply_scale(f);clear_derived(i);m.export(project_dir(i)/'meshes'/'scaled.stl');return {'scale_factor':f}
 @app.get('/api/projects/{i}/mesh-preview')
 def preview_mesh(i):
  m=load_mesh(mesh_path(i));p=project_dir(i)/'meshes'/'preview.glb';m.export(p);return FileResponse(p,media_type='model/gltf-binary',filename='preview.glb')
