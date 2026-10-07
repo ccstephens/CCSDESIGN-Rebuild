@@ -27,6 +27,9 @@ jobs:
           p=create_project(ProjectCreate(name='CI Smoke'))
           pid=p.id
           assert get_project(pid).id == pid
+          from backend.app.main import rename_project,ProjectRename
+          renamed=rename_project(pid,ProjectRename(name='CI Renamed Project'))
+          assert renamed.name == 'CI Renamed Project'
           from pathlib import Path
           from backend.app.main import load_mesh
           from fastapi import HTTPException
