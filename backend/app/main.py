@@ -14,13 +14,24 @@ from .repair import create_mirrored_repair,create_selected_mirrored_repair
 SOURCE_ROOT=Path(__file__).resolve().parents[2];BUNDLE_ROOT=Path(getattr(sys,'_MEIPASS',SOURCE_ROOT));BUILD_FILE=BUNDLE_ROOT/'BUILD-ID.txt';BUILD_ID=os.environ.get('CCSDESIGN_BUILD','').strip() or (BUILD_FILE.read_text(encoding='utf-8').strip() if BUILD_FILE.exists() else 'development');DATA_ROOT=(Path(os.environ.get('LOCALAPPDATA',Path.home()))/'CCSDESIGN Rebuild') if getattr(sys,'frozen',False) else SOURCE_ROOT/'data';PROJECT_ROOT=DATA_ROOT/'projects';ALLOWED_IMAGES={'.jpg','.jpeg','.png','.webp','.tif','.tiff'};ALLOWED_MESHES={'.obj','.ply','.stl','.glb','.gltf'};PROJECT_ROOT.mkdir(parents=True,exist_ok=True)
 app=FastAPI(title='CCSDESIGN Rebuild API',version='0.1.0');app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:5173','http://127.0.0.1:5173'],allow_credentials=True,allow_methods=['*'],allow_headers=['*'])
 class ProjectCreate(BaseModel):name:str
+class SettingsUpdate(BaseModel):meshroom_path:str|None=None
 class ProjectRename(BaseModel):name:str
 class ScaleRequest(BaseModel):current_mm:float;target_mm:float
 class MissingPartRequest(BaseModel):axis:str='x';keep_side:str='positive';overlap_mm:float=0.4
 class SelectedRepairRequest(BaseModel):axis:str='x';point:list[float];radius_mm:float;overlap_mm:float=0.4
 class ProjectInfo(BaseModel):id:str;name:str;image_count:int;mesh_available:bool;reconstruction:dict|None=None
+SETTINGS_FILE=DATA_ROOT/'settings.json'
+def read_settings():
+ try:return json.loads(SETTINGS_FILE.read_text(encoding='utf-8')) if SETTINGS_FILE.exists() else {}
+ except (json.JSONDecodeError,OSError):return {}
+def write_settings(d):
+ SETTINGS_FILE.parent.mkdir(parents=True,exist_ok=True);SETTINGS_FILE.write_text(json.dumps(d,indent=2),encoding='utf-8')
 MESH_NAMES=('missing-part-repair.stl','scaled.stl','repaired.stl','reconstruction.obj','reconstruction.ply','source.stl','source.obj','source.ply','source.glb','source.gltf')
 def meshroom_path():
+ configured=(read_settings().get('meshroom_path') or '').strip()
+ if configured:
+  p=Path(configured).expanduser()
+  if p.is_file():return str(p)
  configured=os.environ.get('MESHROOM_BATCH','').strip()
  if configured:
   p=Path(configured).expanduser()
@@ -124,6 +135,18 @@ def analyse(i):
 def health():
  mr=meshroom_path()
  return {'status':'ok','version':'0.1.0','build':BUILD_ID,'meshroom_available':bool(mr),'meshroom_path':mr}
+@app.get('/api/settings')
+def get_settings():
+ saved=(read_settings().get('meshroom_path') or '').strip();return {'meshroom_path':saved,'meshroom_available':bool(meshroom_path())}
+@app.put('/api/settings')
+def update_settings(x:SettingsUpdate):
+ path=(x.meshroom_path or '').strip();d=read_settings()
+ if path:
+  p=Path(path).expanduser()
+  if not p.is_file():raise HTTPException(400,'Meshroom executable was not found at that path')
+  d['meshroom_path']=str(p)
+ else:d.pop('meshroom_path',None)
+ write_settings(d);mr=meshroom_path();return {'meshroom_path':d.get('meshroom_path',''),'meshroom_available':bool(mr),'detected_path':mr}
 @app.post('/api/projects',response_model=ProjectInfo)
 def create_project(x:ProjectCreate):
  i=uuid.uuid4().hex[:12];r=PROJECT_ROOT/i;(r/'images').mkdir(parents=True);(r/'meshes').mkdir();(r/'exports').mkdir();n=x.name.strip()or'Untitled project';(r/'name.txt').write_text(n,encoding='utf-8');write_job(i);return ProjectInfo(id=i,name=n,image_count=0,mesh_available=False)
