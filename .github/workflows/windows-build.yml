@@ -1,8 +1,8 @@
 name: Windows V1 Build
 on:
   workflow_dispatch:
-  push:
-    branches: [build/v1-foundation]
+  pull_request:
+    branches: [main]
 jobs:
   windows-package:
     runs-on: windows-latest
@@ -25,7 +25,7 @@ jobs:
       - name: Build Windows executable
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --name "CCSDESIGN-Rebuild" --collect-all trimesh --add-data "frontend/dist;frontend/dist" launcher.py
+          pyinstaller --noconfirm --clean --name "CCSDESIGN-Rebuild" --collect-all trimesh --collect-all networkx --add-data "frontend/dist;frontend/dist" launcher.py
       - name: Add launch helper
         shell: pwsh
         run: |
