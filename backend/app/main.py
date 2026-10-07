@@ -83,6 +83,15 @@ def health():return {'status':'ok','version':'0.1.0'}
 @app.post('/api/projects',response_model=ProjectInfo)
 def create_project(x:ProjectCreate):
  i=uuid.uuid4().hex[:12];r=PROJECT_ROOT/i;(r/'images').mkdir(parents=True);(r/'meshes').mkdir();(r/'exports').mkdir();n=x.name.strip()or'Untitled project';(r/'name.txt').write_text(n,encoding='utf-8');write_job(i);return ProjectInfo(id=i,name=n,image_count=0,mesh_available=False)
+@app.get('/api/projects',response_model=list[ProjectInfo])
+def list_projects():
+ out=[]
+ for r in PROJECT_ROOT.iterdir():
+  if not r.is_dir():continue
+  name=r/'name.txt'
+  if not name.exists():continue
+  out.append(ProjectInfo(id=r.name,name=name.read_text(encoding='utf-8'),image_count=len(list((r/'images').glob('*'))),mesh_available=any((r/'meshes').glob('*'))))
+ return sorted(out,key=lambda p:(PROJECT_ROOT/p.id).stat().st_mtime,reverse=True)
 @app.get('/api/projects/{i}',response_model=ProjectInfo)
 def get_project(i):
  r=project_dir(i);return ProjectInfo(id=i,name=(r/'name.txt').read_text(),image_count=len(list((r/'images').glob('*'))),mesh_available=any((r/'meshes').glob('*')))
@@ -142,7 +151,9 @@ def missing_part_preview_file(i):
 def missing_part_apply(i):
  r=project_dir(i)/'meshes';candidate=r/'missing-part-candidate.stl'
  if not candidate.exists():raise HTTPException(404,'Generate and inspect a missing-part preview first')
- combined=load_mesh(candidate);trimesh.repair.fix_normals(combined,multibody=True);trimesh.repair.fill_holes(combined);target=r/'missing-part-repair.stl';combined.export(target);clear_derived(i,keep={'missing-part-repair.stl'});extra=r/'missing-part-candidate.stl';extra.unlink(missing_ok=True);return {'status':'applied','watertight':bool(combined.is_watertight),'components':len(combined.split(only_watertight=False)),'message':'Selected-area replacement applied. Run printability analysis before export.'}
+ combined=load_mesh(candidate);trimesh.repair.fix_normals(combined,multibody=True);trimesh.repair.fill_holes(combined);edge_counts=np.bincount(combined.edges_unique_inverse);boundary_edges=int(np.count_nonzero(edge_counts==1));non_manifold_edges=int(np.count_nonzero(edge_counts>2));
+ if boundary_edges or non_manifold_edges:raise HTTPException(409,f'Repair not applied: preview still has {boundary_edges} boundary and {non_manifold_edges} non-manifold edge(s). Adjust the selection or overlap and preview again.')
+ target=r/'missing-part-repair.stl';combined.export(target);clear_derived(i,keep={'missing-part-repair.stl'});extra=r/'missing-part-candidate.stl';extra.unlink(missing_ok=True);return {'status':'applied','watertight':bool(combined.is_watertight),'components':len(combined.split(only_watertight=False)),'message':'Selected-area replacement applied. Run printability analysis before export.'}
 @app.post('/api/projects/{i}/scale')
 def scale_mesh(i,x:ScaleRequest):
  if x.current_mm<=0 or x.target_mm<=0:raise HTTPException(400,'Measurements must be greater than zero')
