@@ -75,7 +75,7 @@ def find_reconstructed_mesh(root):
  for pattern in ('**/texturedMesh.obj','**/mesh.obj','**/*.obj','**/*.ply'):c.extend(root.glob(pattern))
  c=list(set(c));return max(c,key=lambda p:p.stat().st_size) if c else None
 def run_reconstruction(i,meshroom):
- root=project_dir(i);out=root/'reconstruction';log=root/'reconstruction.log';write_job(i,status='running',stage='Feature extraction',progress=5,message='Meshroom is matching features across your photos.')
+ root=project_dir(i);out=root/'reconstruction';log=root/'reconstruction.log';shutil.rmtree(out,ignore_errors=True);out.mkdir(parents=True,exist_ok=True);write_job(i,status='running',stage='Feature extraction',progress=5,message='Meshroom is matching features across your photos.')
  try:
   with log.open('w',encoding='utf-8',errors='replace') as f:
    p=subprocess.Popen([meshroom,'--input',str(root/'images'),'--output',str(out)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,bufsize=1);write_job(i,pid=p.pid);assert p.stdout
@@ -87,7 +87,7 @@ def run_reconstruction(i,meshroom):
   if code!=0:write_job(i,status='failed',stage='Failed',progress=0,message=f'Meshroom stopped with exit code {code}. See reconstruction.log.',finished_at=datetime.now(timezone.utc).isoformat(),pid=None);return
   found=find_reconstructed_mesh(out)
   if not found:write_job(i,status='failed',stage='No mesh produced',progress=0,message='Meshroom finished but no OBJ/PLY mesh was found.',finished_at=datetime.now(timezone.utc).isoformat(),pid=None);return
-  clear_derived(i);shutil.copy2(found,root/'meshes'/f'reconstruction{found.suffix.lower()}');write_job(i,status='complete',stage='Complete',progress=100,message='3D reconstruction complete. The model is ready to inspect and repair.',finished_at=datetime.now(timezone.utc).isoformat(),pid=None)
+  clear_derived(i);meshes=root/'meshes';(meshes/'reconstruction.obj').unlink(missing_ok=True);(meshes/'reconstruction.ply').unlink(missing_ok=True);shutil.copy2(found,meshes/f'reconstruction{found.suffix.lower()}');write_job(i,status='complete',stage='Complete',progress=100,message='3D reconstruction complete. The model is ready to inspect and repair.',finished_at=datetime.now(timezone.utc).isoformat(),pid=None)
  except Exception as e:write_job(i,status='failed',stage='Failed',progress=0,message=f'Reconstruction error: {e}',finished_at=datetime.now(timezone.utc).isoformat(),pid=None)
 def analyse(i):
  m=load_mesh(mesh_path(i));ext=[round(float(v),3) for v in m.extents];components=len(m.split(only_watertight=False));areas=np.asarray(m.area_faces);degenerate=int(np.count_nonzero(areas<1e-10));edge_counts=np.bincount(m.edges_unique_inverse) if len(m.edges_unique_inverse) else np.array([],dtype=int);boundary_edges=int(np.count_nonzero(edge_counts==1));non_manifold_edges=int(np.count_nonzero(edge_counts>2));checks=[]
