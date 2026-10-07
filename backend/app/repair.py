@@ -37,23 +37,50 @@ def create_mirrored_repair(mesh: trimesh.Trimesh, axis: str, keep_side: str, ove
     return patch, combined, plane
 
 
-def create_selected_mirrored_repair(mesh: trimesh.Trimesh, axis: str, point: list[float], radius_mm: float, overlap_mm: float = 0.4) -> tuple[trimesh.Trimesh, trimesh.Trimesh, float, int]:
-    """Mirror only geometry corresponding to a user-selected damaged region.
+def create_selected_mirrored_repair(mesh: trimesh.Trimesh, axis: str, point: list[float], radius_mm: float, overlap_mm: float = 0.4) -> tuple[trimesh.Trimesh, trimesh.Trimesh, float, int, int]:
+    """Replace a selected damaged region with mirrored geometry from the intact opposite side."""
+    if axis not in AXES:
+        raise ValueError("axis must be x, y or z")
+    if len(point) != 3 or not np.all(np.isfinite(point)):
+        raise ValueError("A valid 3D damaged-area point is required")
+    if radius_mm <= 0:
+        raise ValueError("Selection radius must be greater than zero")
+    if overlap_mm < 0 or overlap_mm > 5:
+        raise ValueError("overlap_mm must be between 0 and 5 mm")
 
-    The clicked point identifies the damaged destination. Its reflected point identifies the intact
-    donor region on the opposite side of the symmetry plane. Faces around that donor point are
-    copied, mirrored, and returned as a non-destructive patch preview.
-    """
-    if axis not in AXES: raise ValueError("axis must be x, y or z")
-    if len(point)!=3 or not np.all(np.isfinite(point)): raise ValueError("A valid 3D damaged-area point is required")
-    if radius_mm<=0: raise ValueError("Selection radius must be greater than zero")
-    if overlap_mm<0 or overlap_mm>5: raise ValueError("overlap_mm must be between 0 and 5 mm")
-    idx=AXES[axis];plane=float(mesh.bounding_box.centroid[idx]);target=np.asarray(point,dtype=float);donor=target.copy();donor[idx]=2.0*plane-target[idx]
-    centers=np.asarray(mesh.triangles_center);distance=np.linalg.norm(centers-donor,axis=1);mask=distance<=radius_mm+overlap_mm
-    count=int(np.count_nonzero(mask))
-    if count==0: raise ValueError("No intact donor geometry was found opposite the selected damaged area. Increase the selection radius or choose another symmetry axis.")
-    donor_mesh=mesh.submesh([np.nonzero(mask)[0]],append=True,repair=False)
-    if not isinstance(donor_mesh,trimesh.Trimesh) or len(donor_mesh.faces)==0: raise ValueError("Could not isolate donor geometry for this selection")
-    patch=donor_mesh.copy();patch.apply_transform(_mirror_transform(idx,plane));patch.invert()
-    combined=trimesh.util.concatenate((mesh.copy(),patch.copy()));combined.merge_vertices();combined.remove_unreferenced_vertices();trimesh.repair.fix_normals(combined,multibody=True)
-    return patch,combined,plane,count
+    idx = AXES[axis]
+    plane = float(mesh.bounding_box.centroid[idx])
+    target = np.asarray(point, dtype=float)
+    donor = target.copy()
+    donor[idx] = 2.0 * plane - target[idx]
+    centers = np.asarray(mesh.triangles_center)
+
+    target_mask = np.linalg.norm(centers - target, axis=1) <= radius_mm
+    donor_mask = np.linalg.norm(centers - donor, axis=1) <= radius_mm + overlap_mm
+    removed_count = int(np.count_nonzero(target_mask))
+    donor_count = int(np.count_nonzero(donor_mask))
+
+    if donor_count == 0:
+        raise ValueError("No intact donor geometry was found opposite the selected damaged area. Increase the selection radius or choose another symmetry axis.")
+    if removed_count == len(mesh.faces):
+        raise ValueError("The selected radius covers the entire model. Reduce the selection radius.")
+
+    donor_mesh = mesh.submesh([np.nonzero(donor_mask)[0]], append=True, repair=False)
+    if not isinstance(donor_mesh, trimesh.Trimesh) or len(donor_mesh.faces) == 0:
+        raise ValueError("Could not isolate donor geometry for this selection")
+
+    patch = donor_mesh.copy()
+    patch.apply_transform(_mirror_transform(idx, plane))
+    patch.invert()
+
+    keep_mask = ~target_mask
+    if np.any(keep_mask):
+        base = mesh.submesh([np.nonzero(keep_mask)[0]], append=True, repair=False)
+        combined = trimesh.util.concatenate((base, patch.copy()))
+    else:
+        combined = patch.copy()
+
+    combined.merge_vertices()
+    combined.remove_unreferenced_vertices()
+    trimesh.repair.fix_normals(combined, multibody=True)
+    return patch, combined, plane, donor_count, removed_count
