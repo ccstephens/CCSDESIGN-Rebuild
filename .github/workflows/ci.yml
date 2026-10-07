@@ -41,6 +41,18 @@ jobs:
               assert e.status_code == 422
           finally:
               empty.unlink(missing_ok=True)
+          import shutil
+          import trimesh
+          from backend.app.main import PROJECT_ROOT,analyse,scale_mesh,ScaleRequest
+          mesh=trimesh.creation.box(extents=[20,20,20])
+          mesh.export(PROJECT_ROOT/pid/'meshes'/'source.stl')
+          report=analyse(pid)
+          assert report['printability']['overall'] == 'pass'
+          assert report['bounds_mm'] == [20.0,20.0,20.0]
+          scaled=scale_mesh(pid,ScaleRequest(current_mm=20,target_mm=40))
+          assert scaled['scale_factor'] == 2.0
+          report=analyse(pid)
+          assert report['bounds_mm'] == [40.0,40.0,40.0]
           assert delete_project(pid)['status'] == 'deleted'
           print('backend smoke test passed')
           PY
