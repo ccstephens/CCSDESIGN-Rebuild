@@ -24,10 +24,9 @@ jobs:
           python - <<'PY'
           from backend.app.main import health,create_project,get_project,delete_project,ProjectCreate
           assert health()['status'] == 'ok'
-          from backend.app.main import get_project
-          assert get_project(pid).mesh_available is False
           p=create_project(ProjectCreate(name='CI Smoke'))
           pid=p.id
+          assert get_project(pid).mesh_available is False
           assert get_project(pid).id == pid
           from backend.app.main import rename_project,ProjectRename
           renamed=rename_project(pid,ProjectRename(name='CI Renamed Project'))
