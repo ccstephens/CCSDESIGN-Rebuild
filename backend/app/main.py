@@ -192,7 +192,7 @@ def reconstruct(i):
  if recover_job(i).get('status') in {'queued','running'}:raise HTTPException(409,'A reconstruction is already running')
  mr=meshroom_path()
  if not mr:raise HTTPException(503,'Meshroom/AliceVision is not installed or not on PATH')
- (r/'reconstruction').mkdir(exist_ok=True);write_job(i,status='queued',stage='Starting',progress=1,message='Preparing photographs for Meshroom.',started_at=datetime.now(timezone.utc).isoformat(),finished_at=None);threading.Thread(target=run_reconstruction,args=(i,mr),daemon=True).start();return {'status':'started','message':'Reconstruction started. Progress is now being tracked.'}
+ shutil.rmtree(r/'reconstruction',ignore_errors=True);(r/'reconstruction').mkdir(exist_ok=True);(r/'reconstruction.log').unlink(missing_ok=True);write_job(i,status='queued',stage='Starting',progress=1,message='Preparing photographs for Meshroom.',started_at=datetime.now(timezone.utc).isoformat(),finished_at=None,pid=None);threading.Thread(target=run_reconstruction,args=(i,mr),daemon=True).start();return {'status':'started','message':'Reconstruction started. Progress is now being tracked.'}
 @app.get('/api/projects/{i}/reconstruct/status')
 def reconstruction_status(i):return recover_job(i)
 @app.get('/api/projects/{i}/reconstruct/diagnostics')
