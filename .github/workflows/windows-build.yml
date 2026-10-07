@@ -21,7 +21,7 @@ jobs:
           npm install
           npm run build
       - name: Install backend and packager
-        run: pip install -r backend/requirements.txt pyinstaller
+        run: pip install -r backend/requirements.txt "pyinstaller>=6.10,<7.0"
       - name: Build Windows executable
         shell: pwsh
         run: |
