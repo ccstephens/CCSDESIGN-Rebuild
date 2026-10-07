@@ -23,7 +23,7 @@ def project_dir(i:str)->Path:
  return p
 def job_file(i):return project_dir(i)/'reconstruction-job.json'
 def clear_derived(i,keep=()):
- r=project_dir(i);m=r/'meshes';e=r/'exports';names={'repaired.stl','scaled.stl','missing-part-patch.stl','missing-part-preview.glb','missing-part-repair.stl','preview.glb'}-set(keep)
+ r=project_dir(i);m=r/'meshes';e=r/'exports';names={'repaired.stl','scaled.stl','missing-part-patch.stl','missing-part-preview.glb','missing-part-repair.stl','missing-part-candidate.stl','preview.glb'}-set(keep)
  for n in names:
   p=m/n
   if p.exists():p.unlink()
@@ -130,9 +130,9 @@ def missing_part_preview(i,x:MissingPartRequest):
  r=project_dir(i)/'meshes';patch.export(r/'missing-part-patch.stl');combined.export(r/'missing-part-preview.glb');return {'status':'preview','plane_mm':round(plane,3),'patch_faces':int(len(patch.faces)),'message':'Missing-part preview generated. Inspect it before applying.'}
 @app.post('/api/projects/{i}/missing-part/selected-preview')
 def selected_missing_part_preview(i,x:SelectedRepairRequest):
- try:patch,combined,plane,donor_faces=create_selected_mirrored_repair(load_mesh(source_for_missing_repair(i)),x.axis,x.point,x.radius_mm,x.overlap_mm)
+ try:patch,combined,plane,donor_faces,removed_faces=create_selected_mirrored_repair(load_mesh(source_for_missing_repair(i)),x.axis,x.point,x.radius_mm,x.overlap_mm)
  except ValueError as e:raise HTTPException(400,str(e))
- r=project_dir(i)/'meshes';patch.export(r/'missing-part-patch.stl');combined.export(r/'missing-part-preview.glb');return {'status':'preview','plane_mm':round(plane,3),'patch_faces':int(len(patch.faces)),'donor_faces':donor_faces,'message':'Selected damaged area rebuilt from matching geometry on the opposite side. Inspect the highlighted-area repair before applying.'}
+ r=project_dir(i)/'meshes';patch.export(r/'missing-part-patch.stl');combined.export(r/'missing-part-preview.glb');combined.export(r/'missing-part-candidate.stl');return {'status':'preview','plane_mm':round(plane,3),'patch_faces':int(len(patch.faces)),'donor_faces':donor_faces,'removed_faces':removed_faces,'message':'Selected damaged geometry was replaced with mirrored donor geometry. Inspect the repair before applying.'}
 @app.get('/api/projects/{i}/missing-part/preview')
 def missing_part_preview_file(i):
  p=project_dir(i)/'meshes'/'missing-part-preview.glb'
@@ -140,9 +140,9 @@ def missing_part_preview_file(i):
  return FileResponse(p,media_type='model/gltf-binary',filename='missing-part-preview.glb')
 @app.post('/api/projects/{i}/missing-part/apply')
 def missing_part_apply(i):
- r=project_dir(i)/'meshes';patch=r/'missing-part-patch.stl'
- if not patch.exists():raise HTTPException(404,'Generate and inspect a missing-part preview first')
- combined=trimesh.util.concatenate((load_mesh(source_for_missing_repair(i)),load_mesh(patch)));combined.merge_vertices();combined.remove_unreferenced_vertices();trimesh.repair.fix_normals(combined,multibody=True);trimesh.repair.fill_holes(combined);target=r/'missing-part-repair.stl';combined.export(target);clear_derived(i,keep={'missing-part-repair.stl'});return {'status':'applied','watertight':bool(combined.is_watertight),'components':len(combined.split(only_watertight=False)),'message':'Missing-part repair applied. Run printability analysis before export.'}
+ r=project_dir(i)/'meshes';candidate=r/'missing-part-candidate.stl'
+ if not candidate.exists():raise HTTPException(404,'Generate and inspect a missing-part preview first')
+ combined=load_mesh(candidate);trimesh.repair.fix_normals(combined,multibody=True);trimesh.repair.fill_holes(combined);target=r/'missing-part-repair.stl';combined.export(target);clear_derived(i,keep={'missing-part-repair.stl'});extra=r/'missing-part-candidate.stl';extra.unlink(missing_ok=True);return {'status':'applied','watertight':bool(combined.is_watertight),'components':len(combined.split(only_watertight=False)),'message':'Selected-area replacement applied. Run printability analysis before export.'}
 @app.post('/api/projects/{i}/scale')
 def scale_mesh(i,x:ScaleRequest):
  if x.current_mm<=0 or x.target_mm<=0:raise HTTPException(400,'Measurements must be greater than zero')
