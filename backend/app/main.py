@@ -19,6 +19,18 @@ class ScaleRequest(BaseModel):current_mm:float;target_mm:float
 class MissingPartRequest(BaseModel):axis:str='x';keep_side:str='positive';overlap_mm:float=0.4
 class SelectedRepairRequest(BaseModel):axis:str='x';point:list[float];radius_mm:float;overlap_mm:float=0.4
 class ProjectInfo(BaseModel):id:str;name:str;image_count:int;mesh_available:bool
+MESH_NAMES=('missing-part-repair.stl','scaled.stl','repaired.stl','reconstruction.obj','reconstruction.ply','source.stl','source.obj','source.ply','source.glb','source.gltf')
+def meshroom_path():
+ p=shutil.which('meshroom_batch')
+ if p:return p
+ if os.name=='nt':
+  roots=[Path(os.environ.get('ProgramFiles','C:/Program Files')),Path(os.environ.get('LOCALAPPDATA',Path.home()))]
+  patterns=('Meshroom*/meshroom_batch.exe','Meshroom*/meshroom_batch.bat','AliceVision*/meshroom_batch.exe')
+  for root in roots:
+   for pattern in patterns:
+    matches=sorted(root.glob(pattern),reverse=True)
+    if matches:return str(matches[0])
+ return None
 def project_dir(i:str)->Path:
  p=PROJECT_ROOT/i
  if not p.exists():raise HTTPException(404,'Project not found')
@@ -95,7 +107,7 @@ def analyse(i):
  add('Closed mesh','pass' if boundary_edges==0 else 'fail','No boundary edges detected.' if boundary_edges==0 else f'{boundary_edges} boundary edge(s) detected; the model is open.');add('Manifold edges','pass' if non_manifold_edges==0 else 'fail','Every edge has a printable manifold connection.' if non_manifold_edges==0 else f'{non_manifold_edges} non-manifold edge(s) detected.');add('Normals','pass' if m.is_winding_consistent else 'warning','Face directions are consistent.' if m.is_winding_consistent else 'Inconsistent face directions detected.');add('Separate parts','pass' if components==1 else 'warning',f'{components} connected component(s) detected.');add('Degenerate faces','pass' if degenerate==0 else 'warning',f'{degenerate} near-zero-area face(s) detected.');add('Physical size','pass' if min(ext)>0.1 else 'fail',f'Model bounds: {" × ".join(map(str,ext))} mm.');overall='fail' if any(c['state']=='fail' for c in checks) else ('warning' if any(c['state']=='warning' for c in checks) else 'pass')
  return {'vertices':int(len(m.vertices)),'faces':int(len(m.faces)),'watertight':bool(m.is_watertight),'winding_consistent':bool(m.is_winding_consistent),'volume':round(float(abs(m.volume)),3) if m.is_volume else None,'bounds_mm':ext,'components':components,'degenerate_faces':degenerate,'boundary_edges':boundary_edges,'non_manifold_edges':non_manifold_edges,'printability':{'overall':overall,'checks':checks}}
 @app.get('/api/health')
-def health():return {'status':'ok','version':'0.1.0','meshroom_available':bool(shutil.which('meshroom_batch'))}
+def health():return {'status':'ok','version':'0.1.0','meshroom_available':bool(meshroom_path())}
 @app.post('/api/projects',response_model=ProjectInfo)
 def create_project(x:ProjectCreate):
  i=uuid.uuid4().hex[:12];r=PROJECT_ROOT/i;(r/'images').mkdir(parents=True);(r/'meshes').mkdir();(r/'exports').mkdir();n=x.name.strip()or'Untitled project';(r/'name.txt').write_text(n,encoding='utf-8');write_job(i);return ProjectInfo(id=i,name=n,image_count=0,mesh_available=False)
@@ -123,7 +135,7 @@ def delete_project(i):
  return {'status':'deleted','id':i}
 @app.get('/api/projects/{i}',response_model=ProjectInfo)
 def get_project(i):
- r=project_dir(i);return ProjectInfo(id=i,name=(r/'name.txt').read_text(),image_count=len(list((r/'images').glob('*'))),mesh_available=any((r/'meshes').glob('*')))
+ r=project_dir(i);return ProjectInfo(id=i,name=(r/'name.txt').read_text(),image_count=len(list((r/'images').glob('*'))),mesh_available=any((r/'meshes'/n).exists() for n in MESH_NAMES))
 @app.delete('/api/projects/{i}/images')
 def clear_images(i):
  r=project_dir(i);job=recover_job(i)
@@ -170,7 +182,7 @@ def reconstruct(i):
  r=project_dir(i);count=len(list((r/'images').glob('*')))
  if count<20 or count>50:raise HTTPException(400,f'V1 reconstruction requires 20–50 photos; this project has {count}.')
  if recover_job(i).get('status') in {'queued','running'}:raise HTTPException(409,'A reconstruction is already running')
- mr=shutil.which('meshroom_batch')
+ mr=meshroom_path()
  if not mr:raise HTTPException(503,'Meshroom/AliceVision is not installed or not on PATH')
  (r/'reconstruction').mkdir(exist_ok=True);write_job(i,status='queued',stage='Starting',progress=1,message='Preparing photographs for Meshroom.',started_at=datetime.now(timezone.utc).isoformat(),finished_at=None);threading.Thread(target=run_reconstruction,args=(i,mr),daemon=True).start();return {'status':'started','message':'Reconstruction started. Progress is now being tracked.'}
 @app.get('/api/projects/{i}/reconstruct/status')
