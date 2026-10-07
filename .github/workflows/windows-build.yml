@@ -53,18 +53,18 @@ jobs:
             if ($ui.StatusCode -ne 200 -or $ui.Content -notmatch 'CCSDESIGN') { throw "Packaged frontend was not served correctly." }
             python -c "import trimesh; trimesh.creation.box(extents=[20,20,20]).export('package-smoke.stl')"
             $created = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/projects" -Method Post -ContentType "application/json" -Body '{"name":"Windows Package Smoke"}'
-            $pid = $created.id
+            $projectId = $created.id
             try {
-              $upload = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/projects/$pid/mesh" -Method Post -Form @{ file = Get-Item "package-smoke.stl" }
-              $analysis = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/projects/$pid/analysis"
+              $upload = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/projects/$projectId/mesh" -Method Post -Form @{ file = Get-Item "package-smoke.stl" }
+              $analysis = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/projects/$projectId/analysis"
               if (($analysis.bounds_mm -join ',') -ne '20,20,20') { throw "Packaged geometry analysis returned unexpected bounds: $($analysis.bounds_mm -join ',')" }
-              $scale = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/projects/$pid/scale" -Method Post -ContentType "application/json" -Body '{"current_mm":20,"target_mm":40}'
-              $scaled = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/projects/$pid/analysis"
+              $scale = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/projects/$projectId/scale" -Method Post -ContentType "application/json" -Body '{"current_mm":20,"target_mm":40}'
+              $scaled = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/projects/$projectId/analysis"
               if (($scaled.bounds_mm -join ',') -ne '40,40,40') { throw "Packaged scale operation returned unexpected bounds: $($scaled.bounds_mm -join ',')" }
-              Invoke-WebRequest -Uri "http://127.0.0.1:8000/api/projects/$pid/export/stl" -OutFile "package-export.stl"
+              Invoke-WebRequest -Uri "http://127.0.0.1:8000/api/projects/$projectId/export/stl" -OutFile "package-export.stl"
               if (-not (Test-Path "package-export.stl") -or (Get-Item "package-export.stl").Length -le 0) { throw "Packaged STL export failed." }
             } finally {
-              if ($pid) { try { Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/projects/$pid" -Method Delete | Out-Null } catch {} }
+              if ($projectId) { try { Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/projects/$projectId" -Method Delete | Out-Null } catch {} }
               Remove-Item "package-smoke.stl","package-export.stl" -Force -ErrorAction SilentlyContinue
             }
             Write-Host "Packaged application API, frontend, geometry, scale and export checks passed."
