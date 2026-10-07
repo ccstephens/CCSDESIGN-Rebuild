@@ -37,7 +37,7 @@ def create_mirrored_repair(mesh: trimesh.Trimesh, axis: str, keep_side: str, ove
     return patch, combined, plane
 
 
-def create_selected_mirrored_repair(mesh: trimesh.Trimesh, axis: str, point: list[float], radius_mm: float, overlap_mm: float = 0.4) -> tuple[trimesh.Trimesh, trimesh.Trimesh, float, int, int]:
+def create_selected_mirrored_repair(mesh: trimesh.Trimesh, axis: str, point: list[float], radius_mm: float, overlap_mm: float = 0.4) -> tuple[trimesh.Trimesh, trimesh.Trimesh, float, int, int, int, int]:
     """Replace a selected damaged region with mirrored geometry from the intact opposite side."""
     if axis not in AXES:
         raise ValueError("axis must be x, y or z")
@@ -55,8 +55,12 @@ def create_selected_mirrored_repair(mesh: trimesh.Trimesh, axis: str, point: lis
     donor[idx] = 2.0 * plane - target[idx]
     centers = np.asarray(mesh.triangles_center)
 
-    target_mask = np.linalg.norm(centers - target, axis=1) <= radius_mm
-    donor_mask = np.linalg.norm(centers - donor, axis=1) <= radius_mm + overlap_mm
+    target_distance = np.linalg.norm(centers - target, axis=1)
+    donor_distance = np.linalg.norm(centers - donor, axis=1)
+    # Remove a slightly larger target region when overlap is requested. This creates a
+    # controlled replacement zone instead of leaving the mirrored patch stacked over old faces.
+    target_mask = target_distance <= radius_mm + overlap_mm
+    donor_mask = donor_distance <= radius_mm + overlap_mm
     removed_count = int(np.count_nonzero(target_mask))
     donor_count = int(np.count_nonzero(donor_mask))
 
@@ -80,7 +84,12 @@ def create_selected_mirrored_repair(mesh: trimesh.Trimesh, axis: str, point: lis
     else:
         combined = patch.copy()
 
-    combined.merge_vertices()
+    combined.merge_vertices(merge_tex=True, merge_norm=True)
     combined.remove_unreferenced_vertices()
     trimesh.repair.fix_normals(combined, multibody=True)
-    return patch, combined, plane, donor_count, removed_count
+    # Report seam health immediately. Exact mirrored topology can weld perfectly; scanned or
+    # asymmetric geometry may still leave boundary/non-manifold edges and must be reviewed.
+    edge_counts = np.bincount(combined.edges_unique_inverse)
+    boundary_edges = int(np.count_nonzero(edge_counts == 1))
+    non_manifold_edges = int(np.count_nonzero(edge_counts > 2))
+    return patch, combined, plane, donor_count, removed_count, boundary_edges, non_manifold_edges
