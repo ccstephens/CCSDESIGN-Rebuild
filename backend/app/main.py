@@ -14,6 +14,7 @@ from .repair import create_mirrored_repair,create_selected_mirrored_repair
 APP_ROOT=Path(__file__).resolve().parents[2];PROJECT_ROOT=APP_ROOT/'data'/'projects';ALLOWED_IMAGES={'.jpg','.jpeg','.png','.webp','.tif','.tiff'};ALLOWED_MESHES={'.obj','.ply','.stl','.glb','.gltf'};PROJECT_ROOT.mkdir(parents=True,exist_ok=True)
 app=FastAPI(title='CCSDESIGN Rebuild API',version='0.1.0');app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:5173','http://127.0.0.1:5173'],allow_credentials=True,allow_methods=['*'],allow_headers=['*'])
 class ProjectCreate(BaseModel):name:str
+class ProjectRename(BaseModel):name:str
 class ScaleRequest(BaseModel):current_mm:float;target_mm:float
 class MissingPartRequest(BaseModel):axis:str='x';keep_side:str='positive';overlap_mm:float=0.4
 class SelectedRepairRequest(BaseModel):axis:str='x';point:list[float];radius_mm:float;overlap_mm:float=0.4
@@ -107,6 +108,13 @@ def list_projects():
   if not name.exists():continue
   out.append(ProjectInfo(id=r.name,name=name.read_text(encoding='utf-8'),image_count=len(list((r/'images').glob('*'))),mesh_available=any((r/'meshes').glob('*'))))
  return sorted(out,key=lambda p:(PROJECT_ROOT/p.id).stat().st_mtime,reverse=True)
+@app.patch('/api/projects/{i}',response_model=ProjectInfo)
+def rename_project(i,x:ProjectRename):
+ r=project_dir(i);name=x.name.strip()
+ if not name:raise HTTPException(400,'Project name cannot be empty')
+ if len(name)>80:raise HTTPException(400,'Project name must be 80 characters or fewer')
+ (r/'name.txt').write_text(name,encoding='utf-8')
+ return get_project(i)
 @app.delete('/api/projects/{i}')
 def delete_project(i):
  r=project_dir(i);job=write_job(i)
@@ -207,7 +215,7 @@ def preview_mesh(i):
 def export_stl(i):
  report=analyse(i)
  if report['printability']['overall']=='fail':raise HTTPException(409,'Export blocked: fix failed printability checks first')
- m=load_mesh(mesh_path(i));t=project_dir(i)/'exports'/'CCSDESIGN-Rebuild.stl';m.export(t);return FileResponse(t,media_type='model/stl',filename='CCSDESIGN-Rebuild.stl')
+ m=load_mesh(mesh_path(i));r=project_dir(i);name=(r/'name.txt').read_text(encoding='utf-8').strip() or 'Rebuild';safe=''.join(ch if ch.isalnum() or ch in '-_' else '-' for ch in name).strip('-_')[:60] or 'Rebuild';filename=f'CCSDESIGN-{safe}.stl';t=r/'exports'/filename;m.export(t);return FileResponse(t,media_type='model/stl',filename=filename)
 
 
 # Production UI: after `npm run build`, FastAPI serves the React application itself.
