@@ -5,6 +5,7 @@ import webbrowser
 import urllib.request
 import socket
 import sys
+import os
 import ctypes
 import traceback
 from pathlib import Path
@@ -14,7 +15,7 @@ from backend.app.main import app
 HOST="127.0.0.1"
 PORT=8000
 URL=f"http://{HOST}:{PORT}"
-LOG_DIR=Path(__file__).resolve().parent if not getattr(sys,"frozen",False) else Path.home()/"CCSDESIGN Rebuild"
+LOG_DIR=Path(__file__).resolve().parent if not getattr(sys,"frozen",False) else Path(os.environ.get("LOCALAPPDATA",Path.home()))/"CCSDESIGN Rebuild"
 LOG_FILE=LOG_DIR/"startup-error.log"
 
 def log_error(message):
