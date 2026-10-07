@@ -25,8 +25,8 @@ jobs:
       - name: Build Windows executable
         shell: pwsh
         run: |
-          $env:CCSDESIGN_BUILD=$env:GITHUB_SHA
-          pyinstaller --noconfirm --clean --name "CCSDESIGN-Rebuild" --collect-all trimesh --collect-all networkx --add-data "frontend/dist;frontend/dist" launcher.py
+          Set-Content -Encoding ascii "BUILD-ID.txt" $env:GITHUB_SHA
+          pyinstaller --noconfirm --clean --name "CCSDESIGN-Rebuild" --collect-all trimesh --collect-all networkx --add-data "frontend/dist;frontend/dist" --add-data "BUILD-ID.txt;." launcher.py
       - name: Add launch helper
         shell: pwsh
         run: |
@@ -44,7 +44,7 @@ jobs:
               if ($p.HasExited) { break }
               try {
                 $health = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/health" -TimeoutSec 1
-                if ($health.status -eq "ok") { $ready = $true; break }
+                if ($health.status -eq "ok") { if ($health.build -ne $env:GITHUB_SHA) { throw "Packaged build identifier mismatch: $($health.build)" }; $ready = $true; break }
               } catch {}
               Start-Sleep -Milliseconds 500
             }
