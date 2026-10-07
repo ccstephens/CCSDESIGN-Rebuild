@@ -53,6 +53,12 @@ jobs:
             }
             if (-not $ready) { $log = Join-Path $env:LOCALAPPDATA "CCSDESIGN Rebuild/startup-error.log"; if (Test-Path $log) { Write-Host "=== startup-error.log ==="; Get-Content $log }; throw "Packaged CCSDESIGN Rebuild did not become healthy." }
             $projects = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/projects" -TimeoutSec 2
+            $settings = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/settings" -TimeoutSec 2
+            Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/settings" -Method Put -ContentType "application/json" -Body '{"meshroom_path":null}' | Out-Null
+            $settingsFile = Join-Path $env:LOCALAPPDATA "CCSDESIGN Rebuild/settings.json"
+            if (-not (Test-Path $settingsFile)) { throw "Packaged settings were not persisted under LocalAppData." }
+            $settingsAfter = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/settings" -TimeoutSec 2
+            if ($null -eq $settingsAfter.meshroom_path) { throw "Packaged settings endpoint did not return its persisted state." }
             $ui = Invoke-WebRequest -Uri "http://127.0.0.1:8000/" -UseBasicParsing -TimeoutSec 2
             if ($ui.StatusCode -ne 200 -or $ui.Content -notmatch 'CCSDESIGN') { throw "Packaged frontend was not served correctly." }
             python -c "import trimesh; trimesh.creation.box(extents=[20,20,20]).export('package-smoke.stl')"
