@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json,shutil,subprocess,threading,uuid
+import json,shutil,subprocess,threading,uuid,os
 from datetime import datetime,timezone
 from pathlib import Path
 from typing import Annotated
@@ -23,6 +23,15 @@ def project_dir(i:str)->Path:
  if not p.exists():raise HTTPException(404,'Project not found')
  return p
 def job_file(i):return project_dir(i)/'reconstruction-job.json'
+def pid_alive(pid):
+ if not isinstance(pid,int) or pid<=0:return False
+ try:os.kill(pid,0);return True
+ except OSError:return False
+def recover_job(i):
+ d=write_job(i)
+ if d.get('status') in {'queued','running'} and not pid_alive(d.get('pid')):
+  return write_job(i,status='failed',stage='Interrupted',progress=0,message='The previous reconstruction was interrupted when the app stopped. Start reconstruction again to retry.',finished_at=datetime.now(timezone.utc).isoformat(),pid=None)
+ return d
 def clear_derived(i,keep=()):
  r=project_dir(i);m=r/'meshes';e=r/'exports';names={'repaired.stl','scaled.stl','missing-part-patch.stl','missing-part-preview.glb','missing-part-repair.stl','missing-part-candidate.stl','preview.glb'}-set(keep)
  for n in names:
@@ -63,17 +72,17 @@ def run_reconstruction(i,meshroom):
  root=project_dir(i);out=root/'reconstruction';log=root/'reconstruction.log';write_job(i,status='running',stage='Feature extraction',progress=5,message='Meshroom is matching features across your photos.')
  try:
   with log.open('w',encoding='utf-8',errors='replace') as f:
-   p=subprocess.Popen([meshroom,'--input',str(root/'images'),'--output',str(out)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,bufsize=1);assert p.stdout
+   p=subprocess.Popen([meshroom,'--input',str(root/'images'),'--output',str(out)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,bufsize=1);write_job(i,pid=p.pid);assert p.stdout
    for line in p.stdout:
     f.write(line);low=line.lower();stages=[('featurematching','Photo matching',20,'Finding matching points between photographs.'),('structurefrommotion','Camera solve',35,'Calculating camera positions and object structure.'),('depthmap','Depth maps',55,'Building detailed depth information.'),('meshing','Meshing',75,'Turning the scan into 3D geometry.'),('meshfiltering','Mesh cleanup',88,'Cleaning reconstructed geometry.'),('texturing','Finalising',95,'Finalising the reconstructed model.')]
     for key,stage,progress,msg in stages:
      if key in low:write_job(i,status='running',stage=stage,progress=progress,message=msg);break
    code=p.wait()
-  if code!=0:write_job(i,status='failed',stage='Failed',progress=0,message=f'Meshroom stopped with exit code {code}. See reconstruction.log.',finished_at=datetime.now(timezone.utc).isoformat());return
+  if code!=0:write_job(i,status='failed',stage='Failed',progress=0,message=f'Meshroom stopped with exit code {code}. See reconstruction.log.',finished_at=datetime.now(timezone.utc).isoformat(),pid=None);return
   found=find_reconstructed_mesh(out)
-  if not found:write_job(i,status='failed',stage='No mesh produced',progress=0,message='Meshroom finished but no OBJ/PLY mesh was found.',finished_at=datetime.now(timezone.utc).isoformat());return
-  clear_derived(i);shutil.copy2(found,root/'meshes'/f'reconstruction{found.suffix.lower()}');write_job(i,status='complete',stage='Complete',progress=100,message='3D reconstruction complete. The model is ready to inspect and repair.',finished_at=datetime.now(timezone.utc).isoformat())
- except Exception as e:write_job(i,status='failed',stage='Failed',progress=0,message=f'Reconstruction error: {e}',finished_at=datetime.now(timezone.utc).isoformat())
+  if not found:write_job(i,status='failed',stage='No mesh produced',progress=0,message='Meshroom finished but no OBJ/PLY mesh was found.',finished_at=datetime.now(timezone.utc).isoformat(),pid=None);return
+  clear_derived(i);shutil.copy2(found,root/'meshes'/f'reconstruction{found.suffix.lower()}');write_job(i,status='complete',stage='Complete',progress=100,message='3D reconstruction complete. The model is ready to inspect and repair.',finished_at=datetime.now(timezone.utc).isoformat(),pid=None)
+ except Exception as e:write_job(i,status='failed',stage='Failed',progress=0,message=f'Reconstruction error: {e}',finished_at=datetime.now(timezone.utc).isoformat(),pid=None)
 def analyse(i):
  m=load_mesh(mesh_path(i));ext=[round(float(v),3) for v in m.extents];components=len(m.split(only_watertight=False));areas=np.asarray(m.area_faces);degenerate=int(np.count_nonzero(areas<1e-10));edge_counts=np.bincount(m.edges_unique_inverse);boundary_edges=int(np.count_nonzero(edge_counts==1));non_manifold_edges=int(np.count_nonzero(edge_counts>2));checks=[]
  def add(name,state,message):checks.append({'name':name,'state':state,'message':message})
@@ -128,12 +137,12 @@ async def upload_mesh(i,file:Annotated[UploadFile,File()]):
 def reconstruct(i):
  r=project_dir(i);count=len(list((r/'images').glob('*')))
  if count<20 or count>50:raise HTTPException(400,f'V1 reconstruction requires 20–50 photos; this project has {count}.')
- if write_job(i).get('status') in {'queued','running'}:raise HTTPException(409,'A reconstruction is already running')
+ if recover_job(i).get('status') in {'queued','running'}:raise HTTPException(409,'A reconstruction is already running')
  mr=shutil.which('meshroom_batch')
  if not mr:raise HTTPException(503,'Meshroom/AliceVision is not installed or not on PATH')
  (r/'reconstruction').mkdir(exist_ok=True);write_job(i,status='queued',stage='Starting',progress=1,message='Preparing photographs for Meshroom.',started_at=datetime.now(timezone.utc).isoformat(),finished_at=None);threading.Thread(target=run_reconstruction,args=(i,mr),daemon=True).start();return {'status':'started','message':'Reconstruction started. Progress is now being tracked.'}
 @app.get('/api/projects/{i}/reconstruct/status')
-def reconstruction_status(i):return write_job(i)
+def reconstruction_status(i):return recover_job(i)
 @app.get('/api/projects/{i}/analysis')
 def analyse_mesh(i):return analyse(i)
 @app.post('/api/projects/{i}/repair')
