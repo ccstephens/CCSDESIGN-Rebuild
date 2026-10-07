@@ -43,8 +43,8 @@ jobs:
           $p = Start-Process -FilePath $exe -PassThru
           try {
             $ready = $false
-            for ($i=0; $i -lt 60; $i++) {
-              if ($p.HasExited) { break }
+            for ($i=0; $i -lt 40; $i++) {
+              if ($p.HasExited) { Write-Host "Packaged process exited early with code $($p.ExitCode)."; break }
               try {
                 $health = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/health" -TimeoutSec 1
                 if ($health.status -eq "ok") { if ($health.build -ne $env:GITHUB_SHA) { throw "Packaged build identifier mismatch: $($health.build)" }; $ready = $true; break }
