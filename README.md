@@ -46,6 +46,6 @@ The `Windows V1 Build` GitHub Actions workflow builds a self-contained CCSDESIGN
 
 Projects created by the packaged application are stored persistently in `%LOCALAPPDATA%\CCSDESIGN Rebuild\projects`, outside the application bundle.
 
-Download the `CCSDESIGN-Rebuild-Windows-V1` artifact from a successful Windows V1 Build workflow, extract the folder, and run `Start CCSDESIGN Rebuild.bat` or `CCSDESIGN-Rebuild.exe`.
+Download the `CCSDESIGN-Rebuild-Windows-V1` artifact from a successful Windows V1 Build workflow. It includes `CCSDESIGN-Rebuild-Windows-V1.zip`; extract that ZIP and run `Start CCSDESIGN Rebuild.bat` or `CCSDESIGN-Rebuild.exe`. No separate Python or Node installation is required for the packaged build.
 
 Mesh import, analysis, repair, scaling and STL export are included in the packaged application. Photo reconstruction additionally requires Meshroom/AliceVision with `meshroom_batch` available on PATH.
