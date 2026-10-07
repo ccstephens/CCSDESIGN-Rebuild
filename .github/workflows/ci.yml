@@ -27,6 +27,17 @@ jobs:
           p=create_project(ProjectCreate(name='CI Smoke'))
           pid=p.id
           assert get_project(pid).id == pid
+          from pathlib import Path
+          from backend.app.main import load_mesh
+          from fastapi import HTTPException
+          empty=Path('empty-ci.stl'); empty.write_text('solid empty\nendsolid empty\n')
+          try:
+              load_mesh(empty)
+              raise AssertionError('empty mesh should be rejected')
+          except HTTPException as e:
+              assert e.status_code == 422
+          finally:
+              empty.unlink(missing_ok=True)
           assert delete_project(pid)['status'] == 'deleted'
           print('backend smoke test passed')
           PY
