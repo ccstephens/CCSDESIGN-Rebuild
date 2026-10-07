@@ -125,14 +125,20 @@ async def upload_images(i,files:Annotated[list[UploadFile],File()]):
 async def upload_mesh(i,file:Annotated[UploadFile,File()]):
  s=Path(file.filename or'').suffix.lower()
  if s not in ALLOWED_MESHES:raise HTTPException(400,'Unsupported mesh format')
- clear_derived(i);m=project_dir(i)/'meshes'
+ m=project_dir(i)/'meshes';tmp=m/f'.upload-{uuid.uuid4().hex}{s}'
+ try:
+  with tmp.open('wb')as o:shutil.copyfileobj(file.file,o)
+  candidate=load_mesh(tmp)
+  if len(candidate.vertices)==0 or len(candidate.faces)==0:raise HTTPException(422,'Mesh contains no usable faces')
+ except Exception:
+  tmp.unlink(missing_ok=True)
+  raise
+ clear_derived(i)
  for old in m.glob('source.*'):
   if old.is_file():old.unlink()
  for old in (m/'reconstruction.obj',m/'reconstruction.ply'):
   if old.exists():old.unlink()
- t=m/f'source{s}'
- with t.open('wb')as o:shutil.copyfileobj(file.file,o)
- load_mesh(t);return {'status':'ready','mesh':t.name}
+ t=m/f'source{s}';tmp.replace(t);return {'status':'ready','mesh':t.name}
 @app.post('/api/projects/{i}/reconstruct')
 def reconstruct(i):
  r=project_dir(i);count=len(list((r/'images').glob('*')))
