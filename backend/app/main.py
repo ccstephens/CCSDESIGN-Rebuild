@@ -93,6 +93,12 @@ def list_projects():
   if not name.exists():continue
   out.append(ProjectInfo(id=r.name,name=name.read_text(encoding='utf-8'),image_count=len(list((r/'images').glob('*'))),mesh_available=any((r/'meshes').glob('*'))))
  return sorted(out,key=lambda p:(PROJECT_ROOT/p.id).stat().st_mtime,reverse=True)
+@app.delete('/api/projects/{i}')
+def delete_project(i):
+ r=project_dir(i);job=write_job(i)
+ if job.get('status') in {'queued','running'}:raise HTTPException(409,'Cannot delete a project while reconstruction is running')
+ shutil.rmtree(r)
+ return {'status':'deleted','id':i}
 @app.get('/api/projects/{i}',response_model=ProjectInfo)
 def get_project(i):
  r=project_dir(i);return ProjectInfo(id=i,name=(r/'name.txt').read_text(),image_count=len(list((r/'images').glob('*'))),mesh_available=any((r/'meshes').glob('*')))
