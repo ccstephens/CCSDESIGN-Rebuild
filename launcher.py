@@ -38,7 +38,7 @@ def wait_and_open():
         try:
             with urllib.request.urlopen(health,timeout=1) as response:
                 if response.status==200:
-                    webbrowser.open(URL)
+                    if os.environ.get("CCSDESIGN_NO_BROWSER")!="1": webbrowser.open(URL)
                     return
         except Exception:
             time.sleep(0.25)
@@ -47,7 +47,7 @@ def main():
     try:
         with urllib.request.urlopen(f"{URL}/api/health",timeout=1) as response:
             if response.status==200:
-                webbrowser.open(URL)
+                if os.environ.get("CCSDESIGN_NO_BROWSER")!="1": webbrowser.open(URL)
                 return
     except Exception:
         pass
