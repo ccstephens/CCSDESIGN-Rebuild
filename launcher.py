@@ -6,14 +6,26 @@ import urllib.request
 import socket
 import sys
 import ctypes
+import traceback
+from pathlib import Path
 import uvicorn
 from backend.app.main import app
 
 HOST="127.0.0.1"
 PORT=8000
 URL=f"http://{HOST}:{PORT}"
+LOG_DIR=Path(__file__).resolve().parent if not getattr(sys,"frozen",False) else Path.home()/"CCSDESIGN Rebuild"
+LOG_FILE=LOG_DIR/"startup-error.log"
+
+def log_error(message):
+    try:
+        LOG_DIR.mkdir(parents=True,exist_ok=True)
+        LOG_FILE.write_text(message,encoding="utf-8")
+    except Exception:
+        pass
 
 def fatal(message):
+    log_error(message)
     if sys.platform=="win32":
         try: ctypes.windll.user32.MessageBoxW(None,message,"CCSDESIGN Rebuild",0x10)
         except Exception: pass
@@ -45,4 +57,14 @@ def main():
     uvicorn.run(app,host=HOST,port=PORT,log_level="info")
 
 if __name__=="__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception:
+        details=traceback.format_exc()
+        log_error(details)
+        if sys.platform=="win32":
+            try: ctypes.windll.user32.MessageBoxW(None,f"CCSDESIGN Rebuild could not start.\n\nDetails were written to:\n{LOG_FILE}","CCSDESIGN Rebuild",0x10)
+            except Exception: pass
+        raise
