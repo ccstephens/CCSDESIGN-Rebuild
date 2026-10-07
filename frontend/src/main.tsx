@@ -2,7 +2,7 @@ import React,{useEffect,useState}from'react'
 import{createRoot}from'react-dom/client'
 import MeshViewer,{DamageSelection}from'./MeshViewer'
 import'./styles.css'
-const API='http://127.0.0.1:8000/api'
+const API='/api'
 type Health={status:string;version:string;meshroom_available:boolean;projects_root:string};type ProjectInfo={id:string;name:string;image_count:number;mesh_available:boolean};type Check={name:string;state:'pass'|'warning'|'fail';message:string};type Analysis={vertices:number;faces:number;watertight:boolean;winding_consistent:boolean;volume:number|null;bounds_mm:number[];components:number;degenerate_faces:number;printability:{overall:'pass'|'warning'|'fail';checks:Check[]}};type Job={status:string;stage:string;progress:number;message:string}
 function App(){
  const[projectId,setProjectId]=useState('');const[health,setHealth]=useState<Health|null>(null);const[name,setName]=useState('My Rebuild');const[status,setStatus]=useState('Create a project to begin.');const[analysis,setAnalysis]=useState<Analysis|null>(null);const[previewUrl,setPreviewUrl]=useState('');const[wireframe,setWireframe]=useState(false);const[job,setJob]=useState<Job|null>(null);const[repairPreview,setRepairPreview]=useState(false);const[selectDamage,setSelectDamage]=useState(false);const[selection,setSelection]=useState<DamageSelection|null>(null)
