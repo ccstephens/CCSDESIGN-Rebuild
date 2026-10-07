@@ -130,9 +130,9 @@ def missing_part_preview(i,x:MissingPartRequest):
  r=project_dir(i)/'meshes';patch.export(r/'missing-part-patch.stl');combined.export(r/'missing-part-preview.glb');return {'status':'preview','plane_mm':round(plane,3),'patch_faces':int(len(patch.faces)),'message':'Missing-part preview generated. Inspect it before applying.'}
 @app.post('/api/projects/{i}/missing-part/selected-preview')
 def selected_missing_part_preview(i,x:SelectedRepairRequest):
- try:patch,combined,plane,donor_faces,removed_faces=create_selected_mirrored_repair(load_mesh(source_for_missing_repair(i)),x.axis,x.point,x.radius_mm,x.overlap_mm)
+ try:patch,combined,plane,donor_faces,removed_faces,boundary_edges,non_manifold_edges=create_selected_mirrored_repair(load_mesh(source_for_missing_repair(i)),x.axis,x.point,x.radius_mm,x.overlap_mm)
  except ValueError as e:raise HTTPException(400,str(e))
- r=project_dir(i)/'meshes';patch.export(r/'missing-part-patch.stl');combined.export(r/'missing-part-preview.glb');combined.export(r/'missing-part-candidate.stl');return {'status':'preview','plane_mm':round(plane,3),'patch_faces':int(len(patch.faces)),'donor_faces':donor_faces,'removed_faces':removed_faces,'message':'Selected damaged geometry was replaced with mirrored donor geometry. Inspect the repair before applying.'}
+ r=project_dir(i)/'meshes';patch.export(r/'missing-part-patch.stl');combined.export(r/'missing-part-preview.glb');combined.export(r/'missing-part-candidate.stl');return {'status':'preview','plane_mm':round(plane,3),'patch_faces':int(len(patch.faces)),'donor_faces':donor_faces,'removed_faces':removed_faces,'boundary_edges':boundary_edges,'non_manifold_edges':non_manifold_edges,'seam_status':('pass' if boundary_edges==0 and non_manifold_edges==0 else 'review'),'message':'Selected damaged geometry was replaced with mirrored donor geometry. Inspect the repair before applying.'}
 @app.get('/api/projects/{i}/missing-part/preview')
 def missing_part_preview_file(i):
  p=project_dir(i)/'meshes'/'missing-part-preview.glb'
