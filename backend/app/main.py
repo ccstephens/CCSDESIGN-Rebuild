@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from .repair import create_mirrored_repair,create_selected_mirrored_repair
-SOURCE_ROOT=Path(__file__).resolve().parents[2];BUNDLE_ROOT=Path(getattr(sys,'_MEIPASS',SOURCE_ROOT));DATA_ROOT=(Path(os.environ.get('LOCALAPPDATA',Path.home()))/'CCSDESIGN Rebuild') if getattr(sys,'frozen',False) else SOURCE_ROOT/'data';PROJECT_ROOT=DATA_ROOT/'projects';ALLOWED_IMAGES={'.jpg','.jpeg','.png','.webp','.tif','.tiff'};ALLOWED_MESHES={'.obj','.ply','.stl','.glb','.gltf'};PROJECT_ROOT.mkdir(parents=True,exist_ok=True)
+SOURCE_ROOT=Path(__file__).resolve().parents[2];BUNDLE_ROOT=Path(getattr(sys,'_MEIPASS',SOURCE_ROOT));BUILD_FILE=BUNDLE_ROOT/'BUILD-ID.txt';BUILD_ID=os.environ.get('CCSDESIGN_BUILD','').strip() or (BUILD_FILE.read_text(encoding='utf-8').strip() if BUILD_FILE.exists() else 'development');DATA_ROOT=(Path(os.environ.get('LOCALAPPDATA',Path.home()))/'CCSDESIGN Rebuild') if getattr(sys,'frozen',False) else SOURCE_ROOT/'data';PROJECT_ROOT=DATA_ROOT/'projects';ALLOWED_IMAGES={'.jpg','.jpeg','.png','.webp','.tif','.tiff'};ALLOWED_MESHES={'.obj','.ply','.stl','.glb','.gltf'};PROJECT_ROOT.mkdir(parents=True,exist_ok=True)
 app=FastAPI(title='CCSDESIGN Rebuild API',version='0.1.0');app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:5173','http://127.0.0.1:5173'],allow_credentials=True,allow_methods=['*'],allow_headers=['*'])
 class ProjectCreate(BaseModel):name:str
 class ProjectRename(BaseModel):name:str
@@ -123,7 +123,7 @@ def analyse(i):
 @app.get('/api/health')
 def health():
  mr=meshroom_path()
- return {'status':'ok','version':'0.1.0','build':os.environ.get('CCSDESIGN_BUILD','development'),'meshroom_available':bool(mr),'meshroom_path':mr}
+ return {'status':'ok','version':'0.1.0','build':BUILD_ID,'meshroom_available':bool(mr),'meshroom_path':mr}
 @app.post('/api/projects',response_model=ProjectInfo)
 def create_project(x:ProjectCreate):
  i=uuid.uuid4().hex[:12];r=PROJECT_ROOT/i;(r/'images').mkdir(parents=True);(r/'meshes').mkdir();(r/'exports').mkdir();n=x.name.strip()or'Untitled project';(r/'name.txt').write_text(n,encoding='utf-8');write_job(i);return ProjectInfo(id=i,name=n,image_count=0,mesh_available=False)
