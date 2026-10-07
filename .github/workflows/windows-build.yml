@@ -108,7 +108,19 @@ jobs:
           Built: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss 'UTC'" -AsUTC)
           Run: Start CCSDESIGN Rebuild.bat
           Projects: %LOCALAPPDATA%\CCSDESIGN Rebuild\projects
-          Photo reconstruction requires Meshroom/AliceVision.
+          Settings: %LOCALAPPDATA%\CCSDESIGN Rebuild\settings.json
+          Startup diagnostics: %LOCALAPPDATA%\CCSDESIGN Rebuild\startup-error.log
+
+          FIRST RUN
+          1. Extract the entire ZIP to a normal folder.
+          2. Double-click Start CCSDESIGN Rebuild.bat.
+          3. Your browser will open the local CCSDESIGN Rebuild app.
+          4. Create a project and either add 20-50 photos or import an STL/OBJ/PLY/GLB/GLTF mesh.
+
+          PHOTO RECONSTRUCTION
+          Mesh import, repair, scale and STL export work without Meshroom.
+          Photo-to-3D reconstruction requires Meshroom/AliceVision.
+          If Meshroom is not detected automatically, paste the full path to meshroom_batch.exe into the Meshroom path field in the app and save it.
           "@ | Set-Content "dist/CCSDESIGN-Rebuild/BUILD-INFO.txt"
       - name: Create portable ZIP
         shell: pwsh
