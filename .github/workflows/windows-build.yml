@@ -75,6 +75,17 @@ jobs:
       - name: Create portable ZIP
         shell: pwsh
         run: Compress-Archive -Path "dist/CCSDESIGN-Rebuild/*" -DestinationPath "dist/CCSDESIGN-Rebuild-Windows-V1.zip" -Force
+      - name: Write build information
+        shell: pwsh
+        run: |
+          @"
+          CCSDESIGN Rebuild V1
+          Commit: $env:GITHUB_SHA
+          Built: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss 'UTC'" -AsUTC)
+          Run: Start CCSDESIGN Rebuild.bat
+          Projects: %LOCALAPPDATA%\CCSDESIGN Rebuild\projects
+          Photo reconstruction requires Meshroom/AliceVision.
+          "@ | Set-Content "dist/CCSDESIGN-Rebuild/BUILD-INFO.txt"
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
