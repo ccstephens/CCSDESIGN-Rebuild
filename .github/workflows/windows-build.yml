@@ -73,7 +73,7 @@ jobs:
             }
             Write-Host "Packaged application API, frontend, geometry, scale and export checks passed."
           } finally {
-            if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+            if (-not $p.HasExited) { & taskkill.exe /PID $p.Id /T /F 2>$null | Out-Null }
           }
       - name: Verify second launch reuses running app
         shell: pwsh
