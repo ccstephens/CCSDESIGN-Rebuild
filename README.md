@@ -37,4 +37,4 @@ Then open `http://127.0.0.1:5173`. API documentation is at `http://127.0.0.1:800
 
 ## V1 status
 
-The first V1 foundation includes project creation, multi-photo upload, Meshroom launch integration, direct mesh import, Trimesh analysis, automatic repair, measurement-based scaling, GLB preview generation and STL export. The next implementation step is the interactive Three.js mesh viewer followed by reconstruction job progress and stronger printability checks.
+V1 now includes persistent projects, 20–50 photo reconstruction with progress tracking, direct mesh import, interactive Three.js inspection, printability analysis, automatic mesh repair, selected-area mirrored missing-part reconstruction with seam validation, real-world scaling, STL export, dependency diagnostics and a single-server Windows launcher.
