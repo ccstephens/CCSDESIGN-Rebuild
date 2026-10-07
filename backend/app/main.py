@@ -8,6 +8,7 @@ import trimesh
 from fastapi import FastAPI,File,HTTPException,UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from .repair import create_mirrored_repair,create_selected_mirrored_repair
 APP_ROOT=Path(__file__).resolve().parents[2];PROJECT_ROOT=APP_ROOT/'data'/'projects';ALLOWED_IMAGES={'.jpg','.jpeg','.png','.webp','.tif','.tiff'};ALLOWED_MESHES={'.obj','.ply','.stl','.glb','.gltf'};PROJECT_ROOT.mkdir(parents=True,exist_ok=True)
@@ -166,3 +167,9 @@ def export_stl(i):
  report=analyse(i)
  if report['printability']['overall']=='fail':raise HTTPException(409,'Export blocked: fix failed printability checks first')
  m=load_mesh(mesh_path(i));t=project_dir(i)/'exports'/'CCSDESIGN-Rebuild.stl';m.export(t);return FileResponse(t,media_type='model/stl',filename='CCSDESIGN-Rebuild.stl')
+
+
+# Production UI: after `npm run build`, FastAPI serves the React application itself.
+FRONTEND_DIST=APP_ROOT/'frontend'/'dist'
+if FRONTEND_DIST.exists():
+ app.mount('/',StaticFiles(directory=FRONTEND_DIST,html=True),name='frontend')
