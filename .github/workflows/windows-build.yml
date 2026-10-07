@@ -1,0 +1,40 @@
+name: Windows V1 Build
+on:
+  workflow_dispatch:
+  push:
+    branches: [build/v1-foundation]
+jobs:
+  windows-package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build frontend
+        shell: pwsh
+        run: |
+          cd frontend
+          npm install
+          npm run build
+      - name: Install backend and packager
+        run: pip install -r backend/requirements.txt pyinstaller
+      - name: Build Windows executable
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --name "CCSDESIGN-Rebuild" --collect-all trimesh --add-data "frontend/dist;frontend/dist" launcher.py
+      - name: Add launch helper
+        shell: pwsh
+        run: |
+          '@echo off
+          cd /d "%~dp0"
+          start "" "CCSDESIGN-Rebuild.exe"' | Set-Content -Encoding ascii "dist/CCSDESIGN-Rebuild/Start CCSDESIGN Rebuild.bat"
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: CCSDESIGN-Rebuild-Windows-V1
+          path: dist/CCSDESIGN-Rebuild/
+          if-no-files-found: error
