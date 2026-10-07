@@ -7,3 +7,5 @@
 .danger{background:#241217;border-color:#5e3038;color:#ff9aa3}.danger:hover{border-color:#ff7e87}
 
 .project-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.project-actions button{margin:0}
+
+.repair-warning{display:block;color:#ffc36b;background:#21180d;border:1px solid #6d4c22;border-radius:8px;padding:8px;line-height:1.35}
