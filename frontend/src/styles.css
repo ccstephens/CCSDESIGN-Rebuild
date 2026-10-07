@@ -3,3 +3,5 @@
 .viewer.selecting{outline:2px solid #70e1ff;outline-offset:-2px}.viewer.selecting canvas{cursor:crosshair}.select-hint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:5;background:rgba(10,14,20,.86);border:1px solid #70e1ff;border-radius:99px;padding:8px 14px;color:#dff8ff;font-size:12px;font-weight:700;pointer-events:none;white-space:nowrap}.active-select{border-color:#70e1ff;background:#10242b;color:#dff8ff}.missing input[type=range]{padding:0}
 
 .dependency-warning{display:block;color:#e9c85d;background:#19170d;border:1px solid #5d542a;border-radius:9px;padding:9px;line-height:1.35}
+
+.danger{background:#241217;border-color:#5e3038;color:#ff9aa3}.danger:hover{border-color:#ff7e87}
