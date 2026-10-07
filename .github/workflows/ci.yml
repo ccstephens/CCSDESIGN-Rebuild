@@ -53,6 +53,13 @@ jobs:
           assert scaled['scale_factor'] == 2.0
           report=analyse(pid)
           assert report['bounds_mm'] == [40.0,40.0,40.0]
+          from backend.app.main import export_stl
+          response=export_stl(pid)
+          exported=Path(response.path)
+          assert exported.exists()
+          assert exported.name == 'CCSDESIGN-CI-Renamed-Project.stl'
+          exported_mesh=trimesh.load(exported,force='mesh')
+          assert [round(float(v),3) for v in exported_mesh.extents] == [40.0,40.0,40.0]
           assert delete_project(pid)['status'] == 'deleted'
           print('backend smoke test passed')
           PY
