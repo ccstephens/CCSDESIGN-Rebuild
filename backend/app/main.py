@@ -45,6 +45,10 @@ def write_job(i,**v):
   try:d.update(json.loads(p.read_text(encoding='utf-8')))
   except (json.JSONDecodeError,OSError):pass
  d.update(v);p.write_text(json.dumps(d,indent=2),encoding='utf-8');return d
+def clear_missing_preview(i):
+ r=project_dir(i)/'meshes'
+ for n in ('missing-part-patch.stl','missing-part-preview.glb','missing-part-candidate.stl'):
+  (r/n).unlink(missing_ok=True)
 def mesh_path(i):
  m=project_dir(i)/'meshes'
  for n in ('missing-part-repair.stl','scaled.stl','repaired.stl','reconstruction.obj','reconstruction.ply','source.stl','source.obj','source.ply','source.glb','source.gltf'):
@@ -63,6 +67,7 @@ def load_mesh(p):
   if not x.geometry:raise HTTPException(422,'Mesh contains no geometry')
   x=trimesh.util.concatenate(tuple(x.geometry.values()))
  if not isinstance(x,trimesh.Trimesh):raise HTTPException(422,'Unsupported mesh')
+ if len(x.vertices)==0 or len(x.faces)==0:raise HTTPException(422,'Mesh contains no usable geometry')
  return x
 def find_reconstructed_mesh(root):
  c=[]
@@ -169,11 +174,13 @@ def repair_mesh(i):
  m=load_mesh(mesh_path(i));m.remove_unreferenced_vertices();m.remove_infinite_values();m.merge_vertices();trimesh.repair.fix_normals(m,multibody=True);trimesh.repair.fill_holes(m);clear_derived(i);m.export(project_dir(i)/'meshes'/'repaired.stl');return {'status':'repaired','watertight':bool(m.is_watertight)}
 @app.post('/api/projects/{i}/missing-part/preview')
 def missing_part_preview(i,x:MissingPartRequest):
+ clear_missing_preview(i)
  try:patch,combined,plane=create_mirrored_repair(load_mesh(source_for_missing_repair(i)),x.axis,x.keep_side,x.overlap_mm)
  except ValueError as e:raise HTTPException(400,str(e))
- r=project_dir(i)/'meshes';patch.export(r/'missing-part-patch.stl');combined.export(r/'missing-part-preview.glb');return {'status':'preview','plane_mm':round(plane,3),'patch_faces':int(len(patch.faces)),'message':'Missing-part preview generated. Inspect it before applying.'}
+ r=project_dir(i)/'meshes';patch.export(r/'missing-part-patch.stl');combined.export(r/'missing-part-preview.glb');combined.export(r/'missing-part-candidate.stl');return {'status':'preview','plane_mm':round(plane,3),'patch_faces':int(len(patch.faces)),'message':'Missing-part preview generated. Inspect it before applying.'}
 @app.post('/api/projects/{i}/missing-part/selected-preview')
 def selected_missing_part_preview(i,x:SelectedRepairRequest):
+ clear_missing_preview(i)
  try:patch,combined,plane,donor_faces,removed_faces,boundary_edges,non_manifold_edges,auto_closed=create_selected_mirrored_repair(load_mesh(source_for_missing_repair(i)),x.axis,x.point,x.radius_mm,x.overlap_mm)
  except ValueError as e:raise HTTPException(400,str(e))
  r=project_dir(i)/'meshes';patch.export(r/'missing-part-patch.stl');combined.export(r/'missing-part-preview.glb');combined.export(r/'missing-part-candidate.stl');return {'status':'preview','plane_mm':round(plane,3),'patch_faces':int(len(patch.faces)),'donor_faces':donor_faces,'removed_faces':removed_faces,'boundary_edges':boundary_edges,'non_manifold_edges':non_manifold_edges,'seam_status':('pass' if boundary_edges==0 and non_manifold_edges==0 else 'review'),'auto_closed':auto_closed,'message':'Selected damaged geometry was replaced with mirrored donor geometry. Inspect the repair before applying.'}
