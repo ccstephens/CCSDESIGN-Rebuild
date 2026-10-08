@@ -1,0 +1,135 @@
+name: Windows V1 Build
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+jobs:
+  windows-package:
+    runs-on: windows-latest
+    env:
+      CCSDESIGN_NO_DIALOG: "1"
+      CCSDESIGN_NO_BROWSER: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build frontend
+        shell: pwsh
+        run: |
+          cd frontend
+          npm install
+          npm run build
+      - name: Install backend and packager
+        run: pip install -r backend/requirements.txt "pyinstaller>=6.10,<7.0"
+      - name: Build Windows executable
+        shell: pwsh
+        run: |
+          Set-Content -Encoding ascii "BUILD-ID.txt" $env:GITHUB_SHA
+          pyinstaller --noconfirm --clean --windowed --name "CCSDESIGN-Rebuild" --collect-all trimesh --collect-all networkx --add-data "frontend/dist;frontend/dist" --add-data "BUILD-ID.txt;." launcher.py
+      - name: Add launch helper
+        shell: pwsh
+        run: |
+          '@echo off
+          cd /d "%~dp0"
+          start "" "CCSDESIGN-Rebuild.exe"' | Set-Content -Encoding ascii "dist/CCSDESIGN-Rebuild/Start CCSDESIGN Rebuild.bat"
+      - name: Smoke-test packaged executable
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path "dist/CCSDESIGN-Rebuild/CCSDESIGN-Rebuild.exe"
+          $p = Start-Process -FilePath $exe -PassThru
+          try {
+            $ready = $false
+            for ($i=0; $i -lt 40; $i++) {
+              if ($p.HasExited) { Write-Host "Packaged process exited early with code $($p.ExitCode)."; break }
+              try {
+                $health = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/health" -TimeoutSec 1
+                if ($health.status -eq "ok") { if ($health.build -ne $env:GITHUB_SHA) { throw "Packaged build identifier mismatch: $($health.build)" }; $ready = $true; break }
+              } catch {}
+              Start-Sleep -Milliseconds 500
+            }
+            if (-not $ready) { $log = Join-Path $env:LOCALAPPDATA "CCSDESIGN Rebuild/startup-error.log"; if (Test-Path $log) { Write-Host "=== startup-error.log ==="; Get-Content $log }; throw "Packaged CCSDESIGN Rebuild did not become healthy." }
+            $projects = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/projects" -TimeoutSec 2
+            $settings = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/settings" -TimeoutSec 2
+            Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/settings" -Method Put -ContentType "application/json" -Body '{"meshroom_path":null}' | Out-Null
+            $settingsFile = Join-Path $env:LOCALAPPDATA "CCSDESIGN Rebuild/settings.json"
+            if (-not (Test-Path $settingsFile)) { throw "Packaged settings were not persisted under LocalAppData." }
+            $settingsAfter = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/settings" -TimeoutSec 2
+            if ($null -eq $settingsAfter.meshroom_path) { throw "Packaged settings endpoint did not return its persisted state." }
+            $ui = Invoke-WebRequest -Uri "http://127.0.0.1:8000/" -UseBasicParsing -TimeoutSec 2
+            if ($ui.StatusCode -ne 200 -or $ui.Content -notmatch 'CCSDESIGN') { throw "Packaged frontend was not served correctly." }
+            python -c "import trimesh; trimesh.creation.box(extents=[20,20,20]).export('package-smoke.stl')"
+            $created = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/projects" -Method Post -ContentType "application/json" -Body '{"name":"Windows Package Smoke"}'
+            $projectId = $created.id
+            try {
+              $upload = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/projects/$projectId/mesh" -Method Post -Form @{ file = Get-Item "package-smoke.stl" }
+              $analysis = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/projects/$projectId/analysis"
+              if (($analysis.bounds_mm -join ',') -ne '20,20,20') { throw "Packaged geometry analysis returned unexpected bounds: $($analysis.bounds_mm -join ',')" }
+              $scale = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/projects/$projectId/scale" -Method Post -ContentType "application/json" -Body '{"current_mm":20,"target_mm":40}'
+              $scaled = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/projects/$projectId/analysis"
+              if (($scaled.bounds_mm -join ',') -ne '40,40,40') { throw "Packaged scale operation returned unexpected bounds: $($scaled.bounds_mm -join ',')" }
+              Invoke-WebRequest -Uri "http://127.0.0.1:8000/api/projects/$projectId/export/stl" -OutFile "package-export.stl"
+              if (-not (Test-Path "package-export.stl") -or (Get-Item "package-export.stl").Length -le 0) { throw "Packaged STL export failed." }
+            } finally {
+              if ($projectId) { try { Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/projects/$projectId" -Method Delete | Out-Null } catch {} }
+              Remove-Item "package-smoke.stl","package-export.stl" -Force -ErrorAction SilentlyContinue
+            }
+            Write-Host "Packaged application API, frontend, geometry, scale and export checks passed."
+          } finally {
+            Get-Process "CCSDESIGN-Rebuild" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          }
+      - name: Verify second launch reuses running app
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path "dist/CCSDESIGN-Rebuild/CCSDESIGN-Rebuild.exe"
+          $server = Start-Process -FilePath $exe -PassThru
+          try {
+            $ready = $false
+            for ($i=0; $i -lt 40; $i++) {
+              if ($server.HasExited) { throw "Primary packaged instance exited early with code $($server.ExitCode)." }
+              try { if ((Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/health" -TimeoutSec 1).status -eq "ok") { $ready=$true; break } } catch {}
+              Start-Sleep -Milliseconds 500
+            }
+            if (-not $ready) { throw "Primary packaged instance did not start." }
+            $second = Start-Process -FilePath $exe -PassThru -Wait
+            if ($second.ExitCode -ne 0) { throw "Second launch should reuse the running app and exit cleanly." }
+          } finally {
+            Get-Process "CCSDESIGN-Rebuild" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          }
+      - name: Write build information
+        shell: pwsh
+        run: |
+          @"
+          CCSDESIGN Rebuild V1
+          Commit: $env:GITHUB_SHA
+          Built: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss 'UTC'" -AsUTC)
+          Run: Start CCSDESIGN Rebuild.bat
+          Projects: %LOCALAPPDATA%\CCSDESIGN Rebuild\projects
+          Settings: %LOCALAPPDATA%\CCSDESIGN Rebuild\settings.json
+          Startup diagnostics: %LOCALAPPDATA%\CCSDESIGN Rebuild\startup-error.log
+
+          FIRST RUN
+          1. Extract the entire ZIP to a normal folder.
+          2. Double-click Start CCSDESIGN Rebuild.bat.
+          3. Your browser will open the local CCSDESIGN Rebuild app.
+          4. Create a project and either add 20-50 photos or import an STL/OBJ/PLY/GLB/GLTF mesh.
+
+          PHOTO RECONSTRUCTION
+          Mesh import, repair, scale and STL export work without Meshroom.
+          Photo-to-3D reconstruction requires Meshroom/AliceVision.
+          If Meshroom is not detected automatically, paste the full path to meshroom_batch.exe into the Meshroom path field in the app and save it.
+          "@ | Set-Content "dist/CCSDESIGN-Rebuild/BUILD-INFO.txt"
+      - name: Create portable ZIP
+        shell: pwsh
+        run: Compress-Archive -Path "dist/CCSDESIGN-Rebuild/*" -DestinationPath "dist/CCSDESIGN-Rebuild-Windows-V1.zip" -Force
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: CCSDESIGN-Rebuild-Windows-V1
+          path: |
+            dist/CCSDESIGN-Rebuild/
+            dist/CCSDESIGN-Rebuild-Windows-V1.zip
+          if-no-files-found: error

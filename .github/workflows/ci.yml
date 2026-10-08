@@ -1,0 +1,79 @@
+name: V1 CI
+
+on:
+  push:
+    branches:
+      - main
+      - build/v1-foundation
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r backend/requirements.txt
+      - run: python -m compileall backend
+      - run: python -c "from backend.app.main import app; print(app.title)"
+      - name: Backend smoke test
+        run: |
+          python - <<'PY'
+          from backend.app.main import health,create_project,get_project,delete_project,ProjectCreate
+          assert health()['status'] == 'ok'
+          p=create_project(ProjectCreate(name='CI Smoke'))
+          pid=p.id
+          assert get_project(pid).mesh_available is False
+          assert get_project(pid).id == pid
+          from backend.app.main import rename_project,ProjectRename
+          renamed=rename_project(pid,ProjectRename(name='CI Renamed Project'))
+          assert renamed.name == 'CI Renamed Project'
+          from pathlib import Path
+          from backend.app.main import load_mesh
+          from fastapi import HTTPException
+          empty=Path('empty-ci.stl'); empty.write_text('solid empty\nendsolid empty\n')
+          try:
+              load_mesh(empty)
+              raise AssertionError('empty mesh should be rejected')
+          except HTTPException as e:
+              assert e.status_code == 422
+          finally:
+              empty.unlink(missing_ok=True)
+          import shutil
+          import trimesh
+          from backend.app.main import PROJECT_ROOT,analyse,scale_mesh,ScaleRequest
+          mesh=trimesh.creation.box(extents=[20,20,20])
+          mesh.export(PROJECT_ROOT/pid/'meshes'/'source.stl')
+          report=analyse(pid)
+          assert report['printability']['overall'] == 'pass'
+          assert report['bounds_mm'] == [20.0,20.0,20.0]
+          scaled=scale_mesh(pid,ScaleRequest(current_mm=20,target_mm=40))
+          assert scaled['scale_factor'] == 2.0
+          report=analyse(pid)
+          assert report['bounds_mm'] == [40.0,40.0,40.0]
+          from backend.app.main import export_stl
+          response=export_stl(pid)
+          exported=Path(response.path)
+          assert exported.exists()
+          assert exported.name == 'CCSDESIGN-CI-Renamed-Project.stl'
+          exported_mesh=trimesh.load(exported,force='mesh')
+          assert [round(float(v),3) for v in exported_mesh.extents] == [40.0,40.0,40.0]
+          assert delete_project(pid)['status'] == 'deleted'
+          print('backend smoke test passed')
+          PY
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install
+      - run: npm run build
