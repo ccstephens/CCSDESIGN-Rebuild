@@ -27,7 +27,7 @@ def read_settings():
  except (json.JSONDecodeError,OSError):return {}
 def write_settings(d):
  SETTINGS_FILE.parent.mkdir(parents=True,exist_ok=True);SETTINGS_FILE.write_text(json.dumps(d,indent=2),encoding='utf-8')
-MESH_NAMES=('missing-part-repair.stl','scaled.stl','repaired.stl','reconstruction.obj','reconstruction.ply','source.stl','source.obj','source.ply','source.glb','source.gltf')
+MESH_NAMES=('missing-part-repair.stl','scaled.stl','repaired.stl','reconstruction.obj','reconstruction.ply','reconstruction.glb','reconstruction.stl','source.stl','source.obj','source.ply','source.glb','source.gltf')
 def meshroom_path():
  configured=(read_settings().get('meshroom_path') or '').strip()
  if configured:
@@ -66,7 +66,7 @@ def pid_alive(pid,expected_started=None):
  except Exception:return False
 def recover_job(i):
  d=write_job(i)
- if d.get('status') in {'queued','running'} and not pid_alive(d.get('pid'),d.get('process_started_at')):
+ if d.get('status') in {'queued','running'} and d.get('pid') is not None and not pid_alive(d.get('pid'),d.get('process_started_at')):
   return write_job(i,status='failed',stage='Interrupted',progress=0,message='The previous reconstruction was interrupted when the app stopped. Start reconstruction again to retry.',finished_at=datetime.now(timezone.utc).isoformat(),pid=None,process_started_at=None)
  return d
 def clear_derived(i,keep=()):
@@ -135,7 +135,7 @@ def analyse(i):
 @app.get('/api/health')
 def health():
  mr=meshroom_path()
- return {'status':'ok','version':'0.1.0','build':BUILD_ID,'meshroom_available':bool(mr),'meshroom_path':mr,'single_image_available':bool(os.environ.get('CCSDESIGN_TRIPOSR_PYTHON') and os.environ.get('CCSDESIGN_TRIPOSR_SCRIPT'))}
+ return {'status':'ok','version':'0.1.0','build':BUILD_ID,'meshroom_available':bool(mr),'meshroom_path':mr,'single_image_available':bool(Path(os.environ.get('CCSDESIGN_TRIPOSR_PYTHON') or '').is_file() and Path(os.environ.get('CCSDESIGN_TRIPOSR_SCRIPT') or '').is_file())}
 @app.get('/api/settings')
 def get_settings():
  saved=(read_settings().get('meshroom_path') or '').strip();return {'meshroom_path':saved,'meshroom_available':bool(meshroom_path())}
