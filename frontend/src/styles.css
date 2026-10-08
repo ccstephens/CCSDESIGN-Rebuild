@@ -15,3 +15,23 @@
 .diagnostics{margin-top:16px;padding:16px;border:1px solid #30343b;border-radius:12px;background:#15181d}.diagnostics-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.diagnostics-head h3{margin:3px 0 0}.diagnostics-meta{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0;font-size:12px}.diagnostics-meta span{padding:6px 9px;border-radius:7px;background:#20242b}.diagnostics pre{max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-word;padding:12px;border-radius:8px;background:#0b0d10;font-size:11px;line-height:1.45}
 
 .readiness{max-width:1400px;margin:0 auto 18px;padding:12px 18px;display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:10px}.readiness>div{padding:10px 12px;border:1px solid #30343b;border-radius:10px;background:#15181d;display:flex;flex-direction:column;gap:3px}.readiness>div small{font-size:10px;letter-spacing:.08em;opacity:.65}.readiness>div strong{font-size:13px}.readiness>p{grid-column:1/-1;margin:0;padding:9px 12px;border-radius:8px;background:#20242b;font-size:13px}@media(max-width:800px){.readiness{grid-template-columns:repeat(2,minmax(120px,1fr))}}
+
+/* Mobile companion: iPhone-friendly project capture and mesh preview. */
+@media(max-width:600px){
+  html,body,#root{width:100%;min-width:0;overflow-x:hidden}
+  main{padding:12px}
+  header{flex-wrap:wrap;gap:8px}
+  .hero h1{font-size:clamp(26px,8vw,36px);line-height:1.15}
+  .workspace{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+  .workspace>*{min-width:0}
+  .readiness{grid-template-columns:repeat(2,minmax(0,1fr));padding:10px;gap:7px}
+  .readiness>div{min-width:0;padding:9px}
+  .readiness>div strong{overflow-wrap:anywhere}
+  .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .viewer{height:min(58vh,440px);min-height:260px}
+  .viewer-tools{right:8px;top:8px}
+  input,select,textarea{max-width:100%;font-size:16px}
+  button,.drop{min-height:44px;touch-action:manipulation}
+  .diagnostics pre{overflow-x:auto}
+  .select-hint{max-width:calc(100% - 20px);white-space:normal;text-align:center}
+}
