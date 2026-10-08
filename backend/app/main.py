@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json,shutil,subprocess,threading,uuid,os,sys
+import psutil
 from datetime import datetime,timezone
 from pathlib import Path
 from typing import Annotated
@@ -134,7 +135,7 @@ def analyse(i):
 @app.get('/api/health')
 def health():
  mr=meshroom_path()
- return {'status':'ok','version':'0.1.0','build':BUILD_ID,'meshroom_available':bool(mr),'meshroom_path':mr}
+ return {'status':'ok','version':'0.1.0','build':BUILD_ID,'meshroom_available':bool(mr),'meshroom_path':mr,'single_image_available':bool(os.environ.get('CCSDESIGN_TRIPOSR_PYTHON') and os.environ.get('CCSDESIGN_TRIPOSR_SCRIPT'))}
 @app.get('/api/settings')
 def get_settings():
  saved=(read_settings().get('meshroom_path') or '').strip();return {'meshroom_path':saved,'meshroom_available':bool(meshroom_path())}
@@ -219,11 +220,47 @@ async def upload_mesh(i,file:Annotated[UploadFile,File()]):
  for old in (m/'reconstruction.obj',m/'reconstruction.ply'):
   if old.exists():old.unlink()
  t=m/f'source{s}';tmp.replace(t);return {'status':'ready','mesh':t.name}
+def single_image_command(image, output):
+ """Optional local TripoSR installation; no paid generation API."""
+ python=os.environ.get('CCSDESIGN_TRIPOSR_PYTHON','').strip()
+ script=os.environ.get('CCSDESIGN_TRIPOSR_SCRIPT','').strip()
+ if not python or not script or not Path(python).is_file() or not Path(script).is_file():
+  return None
+ return [python,script,str(image),'--output-dir',str(output),'--device','cuda:0']
+
+def run_single_image(i,cmd):
+ root=project_dir(i);out=root/'single-image-output';log=root/'reconstruction.log'
+ try:
+  shutil.rmtree(out,ignore_errors=True);out.mkdir(parents=True,exist_ok=True)
+  write_job(i,status='running',stage='AI geometry',progress=10,message='Generating estimated 3D geometry from one photograph.')
+  with log.open('w',encoding='utf-8',errors='replace') as f:
+   p=subprocess.Popen(cmd,stdout=f,stderr=subprocess.STDOUT,creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
+   write_job(i,pid=p.pid,process_started_at=datetime.fromtimestamp(psutil.Process(p.pid).create_time(),timezone.utc).isoformat())
+   code=p.wait()
+  if code!=0:raise RuntimeError(f'Single-image engine exited with code {code}; see reconstruction.log')
+  candidates=[p for ext in ('*.obj','*.ply','*.glb','*.stl') for p in out.rglob(ext) if p.is_file()]
+  if not candidates:raise RuntimeError('The AI engine finished without producing a supported 3D mesh')
+  found=max(candidates,key=lambda p:p.stat().st_size)
+  clear_derived(i)
+  destination=root/'meshes'/('reconstruction'+found.suffix.lower())
+  for old in (root/'meshes').glob('reconstruction.*'):old.unlink(missing_ok=True)
+  shutil.copy2(found,destination)
+  write_job(i,status='complete',stage='Complete',progress=100,message='AI-generated mesh is ready. Hidden surfaces are estimated, not measured.',finished_at=datetime.now(timezone.utc).isoformat(),pid=None,process_started_at=None)
+ except Exception as e:
+  write_job(i,status='failed',stage='Failed',progress=0,message=f'Single-image reconstruction failed: {e}',finished_at=datetime.now(timezone.utc).isoformat(),pid=None,process_started_at=None)
+
 @app.post('/api/projects/{i}/reconstruct')
 def reconstruct(i):
  r=project_dir(i);count=len(list((r/'images').glob('*')))
  if count<1 or count>50:raise HTTPException(400,f'V1 reconstruction requires at least 1 photo and accepts up to 50. Multiple viewpoints are recommended for complete 3D geometry. This project has {count}.')
  if recover_job(i).get('status') in {'queued','running'}:raise HTTPException(409,'A reconstruction is already running')
+ if count==1:
+  image=next((r/'images').iterdir())
+  cmd=single_image_command(image,r/'single-image-output')
+  if not cmd:raise HTTPException(503,'Single-photo AI requires a local TripoSR installation. Set CCSDESIGN_TRIPOSR_PYTHON and CCSDESIGN_TRIPOSR_SCRIPT to its Python executable and run.py. No paid API is needed.')
+  write_job(i,status='queued',stage='Starting AI',progress=1,message='Preparing single-image AI generation.',started_at=datetime.now(timezone.utc).isoformat(),finished_at=None,pid=None,process_started_at=None)
+  threading.Thread(target=run_single_image,args=(i,cmd),daemon=True).start()
+  return {'status':'started','message':'Single-photo AI reconstruction started.'}
  mr=meshroom_path()
  if not mr:raise HTTPException(503,'Meshroom/AliceVision is not installed or not on PATH')
  shutil.rmtree(r/'reconstruction',ignore_errors=True);(r/'reconstruction').mkdir(exist_ok=True);(r/'reconstruction.log').unlink(missing_ok=True);write_job(i,status='queued',stage='Starting',progress=1,message='Preparing photographs for Meshroom.',started_at=datetime.now(timezone.utc).isoformat(),finished_at=None,pid=None,process_started_at=None);threading.Thread(target=run_reconstruction,args=(i,mr),daemon=True).start();return {'status':'started','message':'Reconstruction started. Progress is now being tracked.'}
