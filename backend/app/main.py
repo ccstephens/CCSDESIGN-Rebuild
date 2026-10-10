@@ -17,6 +17,11 @@ app=FastAPI(title='CCSDESIGN Rebuild API',version='0.1.0');app.add_middleware(CO
 class ProjectCreate(BaseModel):name:str
 class SettingsUpdate(BaseModel):meshroom_path:str|None=None
 class ProjectRename(BaseModel):name:str
+class ProjectCatalogUpdate(BaseModel):
+ description:str=''
+ tags:list[str]=[]
+ visibility:str='private'
+ license:str='all-rights-reserved'
 class ScaleRequest(BaseModel):current_mm:float;target_mm:float
 class MissingPartRequest(BaseModel):axis:str='x';keep_side:str='positive';overlap_mm:float=0.4
 class SelectedRepairRequest(BaseModel):axis:str='x';point:list[float];radius_mm:float;overlap_mm:float=0.4
@@ -48,6 +53,7 @@ def meshroom_path():
     if matches:return str(matches[0])
  return None
 def project_dir(i:str)->Path:
+ if len(i)!=12 or any(c not in '0123456789abcdef' for c in i):raise HTTPException(404,'Project not found')
  p=PROJECT_ROOT/i
  if not p.exists():raise HTTPException(404,'Project not found')
  return p
@@ -167,6 +173,21 @@ def rename_project(i,x:ProjectRename):
  if len(name)>80:raise HTTPException(400,'Project name must be 80 characters or fewer')
  (r/'name.txt').write_text(name,encoding='utf-8')
  return get_project(i)
+@app.get('/api/projects/{i}/catalog')
+def get_project_catalog(i):
+ r=project_dir(i);p=r/'catalog.json'
+ if not p.exists():return {'description':'','tags':[],'visibility':'private','license':'all-rights-reserved'}
+ try:return json.loads(p.read_text(encoding='utf-8'))
+ except (OSError,json.JSONDecodeError):raise HTTPException(500,'Project catalog metadata is invalid')
+@app.put('/api/projects/{i}/catalog')
+def update_project_catalog(i,x:ProjectCatalogUpdate):
+ r=project_dir(i)
+ if x.visibility!='private':raise HTTPException(400,'Public publishing is not enabled. Projects must remain private.')
+ if len(x.description)>4000 or len(x.tags)>20 or any(len(t)>40 for t in x.tags):raise HTTPException(400,'Catalog metadata is too long')
+ if x.license not in {'all-rights-reserved','cc-by-4.0','cc-by-sa-4.0','cc0-1.0'}:raise HTTPException(400,'Unsupported license')
+ data={'description':x.description,'tags':[t.strip() for t in x.tags if t.strip()],'visibility':'private','license':x.license}
+ (r/'catalog.json').write_text(json.dumps(data,indent=2),encoding='utf-8')
+ return data
 @app.delete('/api/projects/{i}')
 def delete_project(i):
  r=project_dir(i);job=recover_job(i)
