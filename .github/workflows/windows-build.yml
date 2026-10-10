@@ -1,5 +1,7 @@
 name: Windows V1 Build
 on:
+  push:
+    branches: [build/v1-foundation]
   workflow_dispatch:
   pull_request:
     branches: [main]
@@ -115,11 +117,11 @@ jobs:
           1. Extract the entire ZIP to a normal folder.
           2. Double-click Start CCSDESIGN Rebuild.bat.
           3. Your browser will open the local CCSDESIGN Rebuild app.
-          4. Create a project and either add 20-50 photos or import an STL/OBJ/PLY/GLB/GLTF mesh.
+          4. Create a project, add photos or import an STL/OBJ/PLY/GLB/GLTF mesh.
 
           PHOTO RECONSTRUCTION
           Mesh import, repair, scale and STL export work without Meshroom.
-          Photo-to-3D reconstruction requires Meshroom/AliceVision.
+          Two-or-more-photo reconstruction requires Meshroom/AliceVision.\n          Single-photo AI requires a separately installed and configured local TripoSR engine; it is not bundled in this ZIP.
           If Meshroom is not detected automatically, paste the full path to meshroom_batch.exe into the Meshroom path field in the app and save it.
           "@ | Set-Content "dist/CCSDESIGN-Rebuild/BUILD-INFO.txt"
       - name: Create portable ZIP
